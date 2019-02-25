@@ -1,0 +1,452 @@
+import nidaqmx as dq
+import matplotlib.pyplot as plt
+import numpy as np
+import math
+import logging
+from threading import Thread, Event
+from time import sleep
+
+from .DAQ_tasks import *
+from .Lock import *
+
+
+"""
+This file contains the class that represents the transfer lock and two helper classes. The main class ("TransferLock")
+uses the class "Lock" to generate feedback signal and applires it to devices by communicating with the DAQ through
+the DAQ_tasks class contained in a different file. This class is responsible for acquiring the signal and filtering
+(through helper classes), extracting necessary information, updating the GUI, obtaining the mentioned feedback, 
+applying it through DAQ and plotting the data. In summary, it manages the cavity scan and its data.
+
+"""
+
+#We might need to log some things directly.
+log=logging.getLogger(__name__)
+
+
+"""
+The method in this class that's directly run from GUI is the "start_scan" method. Other methods are run through
+the scan function and are called only if locks are engaged. This class also has conntainers for error signals'
+history (in a queue) that is used for plotting.
+"""
+class TransferLock:
+
+	def __init__(self,lock,tasks,cfg):
+
+		n=len(lock.slave_lockpoints)
+
+		self.lock=lock    			#Lock object
+		self.filter=Filter()		#Filter object
+		self.daq_tasks=tasks    	#DAQ_tasks object
+		self.master_signal=0    	#Full acquired signal
+		self.slave_signals=[0]*n
+
+		self._err_data_length=100   #Length of the error signal collected
+
+		self.rms_points=min(int(lock.cfg['CAVITY']['RMS']),self._err_data_length) #Number of points used for RMS calculation
+
+		#This variable defines the limit below which master laser is considered locked.
+		self.master_rms_crit=float(cfg['CAVITY']['LockThreshold']) #ms
+
+		#Lock flags
+		self.master_lock_engaged=False
+		self.master_locked_flag=False
+
+		#Error signal histor is contained in the queue
+		self.master_err_history=deque(maxlen=self._err_data_length)
+
+		#Current RMS of the error signal
+		self.master_err_rms=0
+
+		#Criterion used for peak finding
+		self.master_peak_crit=float(cfg['CAVITY']['PeakCriterion'])
+		
+		#RMS criteria for slave lasers
+		self.slave_rms_crits=[float(cfg['LASER1']['LockThreshold'])]
+		if n>1:
+			self.slave_rms_crits.append(float(cfg['LASER2']['LockThreshold'])) #MHz
+
+		#Peak finding criteria for slave lasers
+		self.slave_peak_crits=[float(cfg['LASER1']['PeakCriterion'])]
+		if n>1:
+			self.slave_peak_crits.append(float(cfg['LASER2']['PeakCriterion']))
+
+		#Flags in form of threading.Event (necessary for frequency sweep)
+		self.slave_locked_flags=[Event()]*n
+
+		#RMS history
+		self.slave_err_history=[deque(maxlen=self._err_data_length)]*n #Kept in MHz instead of r
+
+		#Current RMS (in MHz as well)
+		self.slave_err_rms=[0]*n
+
+		"""
+		Lock counter. For slave lasers, they are considered locked if their error signal RMS is below the threshold 
+		25 consecutive times (can be changed).
+		"""
+		self.slave_lock_counters=[0]*n
+
+		#Flags
+		self.slave_locks_engaged=[False]*n
+
+		#Queue to calculate average real scanning frequency
+		self._scan_frequency=deque(maxlen=10)
+
+		#Helpful flags and events
+		self._scan_thread=None
+		self._scan_flag=False
+		self._scan_finished=Event()
+		self._lck_adjust_fin=Event()
+		self._slck_adjust_fin=[]
+		for i in range(n):
+			self._slck_adjust_fin.append(Event())
+
+	#Flag changes
+	def start_scan(self):
+		self._scan_flag=True
+
+		
+	def stop_scan(self):
+		self._scan_flag=False
+		
+	"""
+	Two function below are responsible for "acquiring" signal, by which I mean filtering the signal and finding
+	peaks. The data is in reality obtained regardless of these functions and is contained in DAQ_tasks object,
+	which is used here as arguments of initialization for Signal class object. These functions are run only
+	if appropriate locks are engaged.
+	"""
+	def obtain_master_signal(self):
+		try:
+			self.master_signal=Signal(self.daq_tasks.time_samples,self.daq_tasks.PD_data[0],self.filter)
+			self.master_signal.find_peaks(criterion=self.master_peak_crit)
+		except Exception as e:
+			log.warning(e)
+
+
+	def obtain_slave_signal(self,ind):
+		try:
+			self.slave_signals[ind]=Signal(self.daq_tasks.time_samples,self.daq_tasks.PD_data[ind+1],self.filter)
+			self.slave_signals[ind].find_peaks(criterion=self.slave_peak_crit[ind])
+		except Exception as e:
+			log.warning(e)
+
+
+	"""
+	Series of locking functions that are used only if appropriate locks are engaged and if master signal has exactly
+	2 peaks. The flags (in form of threading.Event) are used to time different processes correctly. They're just a 
+	safety precaution. 
+
+	Both lock (lock_master and lock_laser) functions first call a different method, which refreshes the lock. These 
+	functions (refresh_master_lock and refresh_slave_lock) first call a function from the Lock class that uses 
+	the filtered signal and previously found peak positions (through obtain_master(slave)_signal method) contained
+	in the object of Signal class that's saved to one of this object's attributes. The Lock class method finds new
+	errors for this iterations and returns them ("mer" and "ser" variables below). 
+
+	These errors are then passed to update_master_error and update_slave_error methods. These simply add the error
+	to appropriate queues and then calculate RMS of the error signal using chosen number of points. The resulting
+	RMS is compared with thresholds and status of the laser is changed to "locked", if criterion is met. For slave
+	laser the criterion has to be met for 25 consecutive iterations to considered the laser locked.
+
+	Finally, a method of the Lock class is called and it calculates the feedback signals using gains and current 
+	and previous error signals. Once this is done, for the cavity lock the scanning offset is moved by amount set
+	by the feedback signal, and for lasers their voltages are adjusted (moved) by amounts set by their respective
+	feedback signals.
+	"""
+
+	def lock_master(self):
+
+		self._scan_finished.wait()
+		self._lck_adjust_fin.clear()
+
+		self.refresh_master_lock()
+		self.daq_tasks.ao_scan.move_offset(self.lock.master_ctrl)
+
+		self._lck_adjust_fin.set()
+
+
+	def lock_laser(self,ind):
+
+		self._scan_finished.wait()
+		self._slck_adjust_fin[ind].clear()
+
+		self.refresh_slave_lock(ind)
+
+		voltages=self.ao_laser.voltages
+
+		voltages[ind]+=self.slave_ctrl[ind]
+
+		self.daq_tasks.set_laser_volts(voltages)
+
+		self._slck_adjust_fin[ind].set()
+
+
+	def refresh_master_lock(self):
+
+		mer=self.lock.acquire_master_signal(self.master_signal)
+		self.update_master_error(mer)
+		self.lock.refresh_master_control()
+
+
+	def refresh_slave_lock(self,ind):
+
+		ser=self.lock.acquire_slave_signal(self.slave_signals[ind],ind)
+		self.update_slave_error(ser,ind)
+		self.lock.refresh_slave_control(ind)
+
+
+	def update_master_error(self,err):
+
+		#It is a FIFO queue which automatically removes the oldest element if it becomes over limit
+		self.master_err_history.append(err) 
+
+		if len(self.master_err_history)<=self.rms_points:
+			self.master_err_rms=math.sqrt(np.sum(np.power(list(self.master_err_history),2)))
+		else:
+			self.master_err_rms=math.sqrt(np.sum(np.power(list(self.master_err_history)[-self.rms_points:],2)))
+
+		if self.master_err_rms<self.master_rms_crit:
+			self.master_locked_flag=True
+		else:
+			self.master_locked_flag=False
+
+
+	def update_slave_error(self,err,ind):
+
+		self.slave_err_history[ind].append(err)
+		if len(self.slave_err_history[ind])<=self.rms_points:
+			self.slave_err_rms[ind]=math.sqrt(np.sum(np.power(list(self.slave_err_history[ind]),2)))
+		else:
+			self.slave_err_rms[ind]=math.sqrt(np.sum(np.power(list(self.slave_err_history[ind])[-self.rms_points:],2)))
+
+		if self.slave_err_rms[ind]<self.slave_rms_crits[ind]:
+			self.slave_lock_counters[ind]+=1
+			if self.slave_lock_counters[ind]>25:
+				self.slave_locked_flags[ind].set()
+			else:
+				self.slave_locked_flags[ind].clear()
+		else:
+			self.slave_lock_counters[ind]=0
+
+
+	"""
+	The function below manages the scan and performs it through the DAQ_tasks class methods. It is run in 
+	a separate thread that is open from the level of GUI. This function runs as long as the scan flag is
+	set to True. Currently, acquiring data and updating the plots is done sequentially in this function.
+	The order is as follows:
+		- scan is performed, i.e. cavity's piezo is ramped and data from photodetectors acquired
+		- time of that task is measured and added to the queue used for calculating real scanning frequency
+		- label in the GUI is updated
+		- 2D lines on the plot are updated (and redrawn at the end of the function) and axes limits adjusted.
+		This refers to the plot showing the data from photodiodes, not the error signal.
+		- next, if the cavity lock is not engaged, nothing happens (graphs are just told to redraw) and next
+		iteration begins
+		- the signal from the master signal is analyzed (peaks are found)
+		- if there are not exactly 2 peaks, nothing more happens and next iteration begins
+		- otherwise first a GUI element is changed and the locking function called (described above), after
+		which, if the master laser/cavity is locked, other GUI elements are updated
+		- now whether or not the cavity is locked, the plotting of error signal happens, as well as logging
+		to a container, if the user chose to record the error signal; that occurs at the very end of the iteration
+		- if the cavity is locked, before error signal plotting happens, the slave lasers are locked, if the
+		locks are engaged of course; GUI elements are updated as well
+
+	"""
+
+	def scan(self,GUI_object=None):
+
+		while self._scan_flag:
+
+			self._scan_finished.clear()
+
+			ts=time()
+
+			self.daq_tasks.scan_and_acquire(self._scan_finished)
+
+			self._scan_finished.wait()
+			self._scan_frequency.append(1/(time()-ts))
+
+			GUI_object.real_scfr.config(text='{:.1f}'.format(np.mean(list(self._scan_frequency))))
+
+			for i in range(len(self.daq_tasks.PD_data)):
+				GUI_object.plot_win.all_lines[i].set_data(self.daq_tasks.time_samples,self.daq_tasks.PD_data[i])
+				if i==0:
+					GUI_object.plot_win.all_lines[i+3].set_data([self.lock.master_lockpoint]*2,[-10,10])
+				else:
+					GUI_object.plot_win.all_lines[i+3].set_data([self.lock.slave_lockpoints[i-1]*self.lock.interval+self.lock.master_lockpoint]*2,[-10,10])
+			GUI_object.plot_win.ax.set_xlim(-1, self.daq_tasks.ao_scan.scan_time+1)
+			GUI_object.plot_win.ax.set_ylim(1.2*np.amin(self.daq_tasks.PD_data), 1.2*np.amax(self.daq_tasks.PD_data))
+
+			if self.master_lock_engaged:
+
+				self.obtain_master_signal()
+
+				if len(self.master_signal.peaks_x)==2:
+
+					GUI_object.twopeak_status_cv.itemconfig(GUI_object.twopeak_status,fill="#05FF2B")
+
+					self.lock_master()
+
+					self._lck_adjust_fin.wait()
+
+					GUI_object.rms_cav.conifg(text="{:.2f}".format(self.master_err_rms))
+				else:
+					GUI_object.twopeak_status_cv.itemconfig(GUI_object.twopeak_status,fill="red")
+					
+				if self.master_locked_flag:
+
+					GUI_object.cav_lock_status_cv.itemconfig(GUI_object.cav_lock_status,fill="#05FF2B")
+
+					if any(self.slave_locks_engaged):
+						for i in range(len(self.slave_locks_engaged)):
+							if self.slave_locks_engaged[i]:
+								self.obtain_slave_signal(i)
+								self.lock_laser(i)
+								self._slck_adjust_fin[i].wait()
+
+								GUI_object.rms_laser[i].config(text="{:.2f}".format(self.slave_err_rms[i]))
+								GUI_object.app_volt[i].config(text='{:.2f}'.format(self.daq_tasks.ao_laser.voltages[i]))
+								GUI_object.laser_r[i].config(text='{:.3f}'.format(GUI_object.lock.slave_Rs[i]))
+
+								if self.slave_locked_flags.is_set():
+									GUI_object.laser_lock_status_cv[i].itemconfig(GUI_object.laser_lock_status[i],fill="#05FF2B")
+								else:
+									GUI_object.laser_lock_status_cv[i].itemconfig(GUI_object.laser_lock_status[i],fill="red")
+				else:
+					GUI_object.cav_lock_status_cv.itemconfig(GUI_object.cav_lock_status,fill="red")
+
+			
+			if self.master_lock_engaged and len(self.master_signal.peaks_x)==2:
+
+				X=np.linspace(0,len(self.master_err_history)-1,len(self.master_err_history))
+				GUI_object.plot_win.mline.set_data(X,self.master_err_history)
+				GUI_object.plot_win.ax_err.set_ylim(min(self.master_err_history)-self.master_rms_crit/3, self.master_rms_crit/3+max(self.master_err_history))
+				GUI_object.plot_win.ax_err.set_xlim(min(X), max(X))
+
+				if GUI_object.cav_err_log.get():
+					GUI_object.log_errors[0].append(time()-GUI_object.mt_start)
+					GUI_object.log_errors[1].append(GUI_object.lock.master_err)
+
+				for j in range(len(self.slave_locks_engaged)):
+					if self.slave_locks_engaged[j]:
+
+						Xs=np.linspace(0,len(self.slave_err_history[j])-1,len(self.slave_err_history[j]))
+						GUI_object.plot_win.slines[j].set_data(Xs,self.slave_err_history[j])
+						GUI_object.plot_win.ax_err_L[j].set_ylim(min(self.slave_err_history[j])-self.slave_rms_crits[j]/3, self.slave_rms_crits[j]/3+max(self.slave_err_history[j]))
+						GUI_object.plot_win.ax_err_L[j].set_xlim(min(Xs), max(Xs))
+
+
+					if GUI_object.las_err_log[j].get():
+						GUI_object.log_las_errors[j][0].append(time()-GUI_object.lt_start[j])
+						GUI_object.log_las_errors[j][1].append(GUI_object.slave_err_history[j][-1])
+
+			
+			GUI_object.plot_win.fig.canvas.draw()
+
+
+#################################################################################################################
+
+"""
+Class below is responsible for smoothing the data, taking the derivative and finding peaks. I have found by trial 
+and error that the smallest error of peak finding happens for the parameters that are used as default and for 
+the procedure used to find them. The peak finding algorithm takes approxiamtely 0.6ms, so it is no way a bottleneck.
+"""	
+
+class Signal:
+
+	"""
+	To initialize an object of this class one needs the X and Y data and an object of Filter class. During the 
+	initialization the data is smoothed using an SG filter. 
+	"""
+	def __init__(self,datax,datay,fltr):
+
+		self.data_x=datax
+		self.data_y=datay
+		self.dx=datax[1]-datax[0]
+		self.mx=np.max(datay)
+		self.smooth_y=fltr.apply(datay,0,datax[1]-datax[0])
+		self.fltr=fltr
+		self.der_y=[]
+		self.smooth_der=[]
+		self.peaks_x=[]
+		self.peaks_y=[]
+
+
+	"""
+	To find the peaks we look at the zero crossing of the derivative signal. The algorithm first finds first derivative
+	of the signal. Then, because taking a derivative a noise-amplifying process, the derivative signal is smoothed using
+	SG filter and then using a moving average. 
+
+	To find peaks, we go over smoothed derivative signal until we find 2 points that are on the opposite side of 0 (we're 
+	looking for them to also have a positive slope). Once two such points are found, the algorithm looks at the hight of 
+	the peak in the data. It is considered a real peak if peak>criterion*max(data). Because in our measurement we're going
+	to observe one or two peaks of similar height, with a decent SNR, such a simple criterion works perfectly well.
+
+	To find the position of the peak, we fit a linear function to 14 points around the zero crossing and get the zero 
+	crossing from the fit. 14 points used for a fit works very well for 1000 points per scan and peaks that are not extremely
+	narrow. This can be changed if necessary. Once the peak is found, the loop is skipped by "win_size".
+	"""
+	def find_peaks(self,criterion=0.5,win_size=7,hs=10):
+
+		D=self.fltr.apply(self.smooth_y,1,self.dx)
+		self.der_y=D
+		D=self.fltr.apply(D,0,self.dx)
+		D=self.fltr.moving_avg(D,half_size=hs)
+		self.smooth_der=D
+
+
+		points=[]
+		skip=0
+		for i in range(win_size,len(D)-win_size):
+
+			if skip>0:
+				skip-=1
+				continue
+
+			if D[i-1]<0 and D[i]>0:
+
+				if self.data_y[i]>criterion*self.mx:
+
+
+					a,b=np.polyfit(self.data_x[i-win_size:i+win_size],D[i-win_size:i+win_size],1)
+					points.append(-b/a)
+					skip=win_size
+
+
+		self.peaks_x=np.array(points)
+
+
+	#Function that finds interpolated values at the found peak position.
+	def get_ypeaks(self):
+
+		if len(self.peaks_x)==0:
+			return
+
+		f=interpolate.interp1d(self.data_x,self.smooth_y)
+
+		self.peaks_y=f(self.peaks_x)
+
+
+#################################################################################################################
+
+
+"""
+A helper class that defines multiple SG filters and a moving average. In the coefficent array, the first element is
+a smoothing window, the second one is first derivative, the third one is second derivative, and the last element can
+be used to obtained thrid derivative of the signal. These windows are convolved with the signal to obtain desired 
+result. Finally, moving average is defined, which is a convolution with a special [1,1,...,1]/n window.
+"""
+class Filter:
+
+	def __init__(self):
+
+		self.coeffs=[[-2/21,3/21,6/21,7/21,6/21,3/21,-2/21],[-3/10,-1/5,-1/10,0,1/10,1/5,3/10],[5/42,0,-3/42,-4/42,-3/42,0,5/42],[-1/6,1/6,1/6,0,-1/6,-1/6,1/6]]
+
+	def apply(self,signal,der,sp): #Make it more efficient with np.convolve!
+
+		C=self.coeffs[der][:]
+		if der>1:
+			C=[c/sp**der for c in C]
+
+		return np.convolve(signal,C,"same")
+
+	def moving_avg(self,data,half_size=2):
+
+		return np.divide(np.convolve(data,np.ones(2*half_size+1),"same"),2*half_size+1)
