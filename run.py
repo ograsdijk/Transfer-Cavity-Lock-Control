@@ -5,7 +5,6 @@ application.
 """
 
 
-
 from SWP import app
 
-app.run(debug=False)
+app.run(debug=False,simulate=True)
