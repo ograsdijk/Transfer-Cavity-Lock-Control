@@ -111,12 +111,21 @@ class Laser:
 
 		rd,val=registerReadU16(self.port,self.devID,REG['Setup'],-1)
 		val=list('{0:010b}'.format(val))
-		if val[8]!=str(setting):
-			val[8]=str(setting)
+		if val[-2]!=str(setting):
+			val[-2]=str(setting)
 			val=''.join(val)
 			val=int(val,2)
 			wr=registerWriteU16(self.port,self.devID,REG['Setup'],val,-1)
 
+
+	def get_modulation_type(self):
+		rd,val=registerReadU16(self.port,self.devID,REG['Setup'],-1)
+		val=list('{0:010b}'.format(val))
+		
+		if int(val[-2])==0:
+			return " Wide "
+		else:
+			return "Narrow"
 
 	def error_readout(self):
 		rd,val=registerReadU16(self.port,self.devID,REG['Status'],-1)

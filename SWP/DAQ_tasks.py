@@ -20,7 +20,7 @@ class DAQ_tasks:
 	that are connected to this computer (might include a smiulated DAQ) and chooses one that matches the name.
 	Otherwise, it chooses the first one from the list.
 	"""
-	def __init__(self,dev_name=None):
+	def __init__(self,simulate,dev_name=None):
 		
 		syst=dq.system.System.local()
 		if dev_name is not None:
@@ -37,6 +37,7 @@ class DAQ_tasks:
 		self.ai_PDs=0
 		self.time_samples=[]
 		self.PD_data=[]
+		self.simulation=simulate
 
 
 	#To avoid error when the program is being closed, the tasks are closed first.
@@ -205,13 +206,14 @@ class DAQ_tasks:
 		self.ao_laser.set_voltages(True)
 		self.ao_scan.perform_scan(True)
 
+		#Data from photodetectros is acquired (it was stored in buffers when scan was being performed, now it's fetched)
+		self.ai_PDs.acquire_data()
+
 		#We set options for the program to wait for scan and readout to bo completed before the task is stopped.
 		self.ao_scan.dq_task.wait_until_done()
 		self.ai_PDs.dq_task.wait_until_done()
 
-		#Data from photodetectros is acquired (it was stored in buffers when scan was being performed, now it's fetched)
-		self.ai_PDs.acquire_data()
-
+		
 		#We add reference to the DAQ_task object
 		self.PD_data=self.ai_PDs.acq_data
 
@@ -219,9 +221,34 @@ class DAQ_tasks:
 		self.ao_scan.dq_task.stop()
 		self.ai_PDs.dq_task.stop()
 
+		if self.simulation:
+			self.PD_data=self.simulate_scan()
+
 		#Flag is set
 		evnt.set()
 
+
+	def simulate_scan(self):
+		peak_m1=(self.ao_scan.mx_voltage/10-self.ao_scan.offset)+self.ao_scan.scan_time/8
+		peak_m2=peak_m1+self.ao_scan.scan_time*3/4
+
+		peak_s1=self.ao_laser.voltages[0]/5*self.ao_scan.scan_time
+		
+		M=generate_data([0.01,0.01],[peak_m1,peak_m2],[2/self.ao_scan.n_samples*self.ao_scan.scan_time,2/self.ao_scan.n_samples*self.ao_scan.scan_time],self.ao_scan.n_samples,0,self.ao_scan.scan_time)
+		M=add_noise(M,0.002)
+		S1=generate_data([0.002],[peak_s1],[1/self.ao_scan.n_samples*self.ao_scan.scan_time],self.ao_scan.n_samples,0,self.ao_scan.scan_time)
+		S1=add_noise(S1,0.001)
+
+		if self.ao_laser._channel_no>1:
+			peak_s2=self.ao_laser.voltages[1]/5*self.ao_scan.scan_time
+			S2=generate_data([0.002],[lck.peak_s2],[1/self.ao_scan.n_samples*self.ao_scan.scan_time],self.ao_scan.n_samples,0,self.ao_scan.scan_time)
+			S2=add_noise(S2,0.0015)
+		
+			return [M,S1,S2]
+		else:
+			return [M,S1]
+
+	
 
 #################################################################################################################
 
@@ -445,6 +472,7 @@ class PD_task:
 		self.acq_data=self.dq_task.read(number_of_samples_per_channel=self.n_samples)
 
 
+
 #################################################################################################################
 
 
@@ -453,12 +481,12 @@ The global function is defined to simply setup tasks using information from the 
 when a TransferLock obejct is initialized. This method simply creates a DAQ_tasks object, adds references to Scan, L_task and PD_task objects,
 adjusts parameters and sets up and synchronises clocks. It returns object of the DAQ_tasks class.
 """
-def setup_tasks(cfg,n):
+def setup_tasks(cfg,n,simulate):
 
 	if cfg['DAQ']['DeviceName']=="default":
-		tq=DAQ_tasks()
+		tq=DAQ_tasks(simulate)
 	else:
-		tq=DAQ_tasks(dev_name=cfg['DAQ']['DeviceName'])
+		tq=DAQ_tasks(simulate,dev_name=cfg['DAQ']['DeviceName'])
 
 	tq.set_scan_task("Scan",channel=int(cfg['CAVITY']['OutputChannel']))
 	tq.set_laser_task("Lasers")
@@ -486,3 +514,23 @@ def channel_number(channel):
 		x=int(channel[-1])
 
 	return x
+
+def generate_data(A,B,G,N,start,end):
+
+	X=np.linspace(start,end,num=N)
+
+	Y=[lor(X[i],A,B,G) for i in range(len(X))]
+
+	return Y
+
+def add_noise(data,var):
+
+	noise=var*np.random.randn(len(data))
+
+	return data+noise
+
+def lor(x,A,B,G):
+	res=0
+	for i in range(len(A)):
+		res+=A[i]/(G[i]**2+(x-B[i])**2)
+	return res

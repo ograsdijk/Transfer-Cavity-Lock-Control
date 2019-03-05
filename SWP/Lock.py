@@ -162,12 +162,17 @@ class Lock:
 		return (self.slave_lockpoints[ind]-self.zero_slave_lockpoints[ind])*self._slave_FSR[ind]*1000
 
 
+	def get_laser_local_freq(self,ind):
+		return (self.slave_Rs[ind]-self.zero_slave_lockpoints[ind])*self._slave_FSR[ind]*1000
+
+	
 	def adjust_gains(self,prop,integral):
 		if len(prop)!=len(self.prop_gain) or len(integral)!=len(self.int_gain):
 			raise ValueError('Please provide all the necessary gains.') #Probably unnecessary. All gains are kept as a list.
 			return
 		self.prop_gain=prop
 		self.int_gain=integral
+		self.master_ctrl=0
 
 	"""
 	The function below uses as its argument an object of Signal class defined in Data_acq.py file. From that object it simply
@@ -185,27 +190,38 @@ class Lock:
 			self.master_err_prev=self.master_err
 
 			#What we're locking is actually the first peak. The error signal is just distance between peak and the lockpoint (in ms).
-			self.master_err=self.master_lockpoint-self.master_peaks[0]
+			self.master_err=self.master_peaks[0]-self.master_lockpoint
 
 			#We also calculate the interval between the peaks.
-			self.interval=(signal.data_x[-1]-signal.data_x[0])
+			self.interval=(signal.peaks_x[-1]-signal.peaks_x[0])
 
 		return self.master_err
 	
 
 	#Analogical function to the previous one. It uses the first detected peak of the slave laser. It returns the error in units of MHz.
 	def acquire_slave_signal(self,signal,ind):
-		self.slave_errs_prev[ind]=self.slave_errs[ind]
-		x=signal.peaks_x[0]
-		self.slave_peaks[ind]=x
+		if len(signal.peaks_x)>0:
+			self.slave_errs_prev[ind]=self.slave_errs[ind]
+			self.slave_peaks[ind]=signal.peaks_x[0]
 
-		#Current R parameter of the slave laser is calculated.
-		self.slave_Rs[ind]=(self.master_peaks[0]-x)/(self.master_peaks[0]-self.master_peaks[1])
+			#Current R parameter of the slave laser is calculated.
+			self.slave_Rs[ind]=(self.master_peaks[0]-self.slave_peaks[ind])/(self.master_peaks[0]-self.master_peaks[1])
 
-		#The error is just the difference between laser's peak and the lockpoint in the units of R.
-		self.slave_errs[ind]=self.slave_lockpoints[ind]-self.slave_Rs[ind]
+			#The error is just the difference between laser's peak and the lockpoint in the units of R.
+			self.slave_errs[ind]=self.slave_lockpoints[ind]-self.slave_Rs[ind]
 
-		return self.slave_errs[ind]*1000*self._slave_FSR[ind]
+
+			if len(signal.peaks_x)>1:
+				for peak in signal.peaks_x[1:]:
+					err=self.slave_lockpoints[ind]-(self.master_peaks[0]-peak)/(self.master_peaks[0]-self.master_peaks[1])
+					if abs(err)<abs(self.slave_errs[ind]):
+						self.slave_errs[ind]=err
+						self.slave_peaks[ind]=peak
+						self.slave_Rs[ind]=self.slave_lockpoints[ind]-err
+					
+			return self.slave_errs[ind]*1000*self._slave_FSR[ind]
+		else:
+			return 0
 
 		
 	"""
@@ -230,11 +246,13 @@ class Lock:
 	rescale the parameters). This can be changed, but once set, it should not be touched.
 	"""
 	def refresh_master_control(self):
-		self.master_ctrl=self.master_ctrl+0.5*self.prop_gain[0]*(self.master_err-self.master_err_prev)+self.int_gain[0]*self.master_err*self.interval/1000 
+		self.master_ctrl=(self.master_ctrl+0.05*self.prop_gain[0]*(self.master_err-self.master_err_prev)+self.int_gain[0]*self.master_err*self.interval/10000)
+
 	
 
 	def refresh_slave_control(self,i):
-		self.slave_ctrls[i]=0.9*self.slave_ctrls[i]+self.prop_gain[i+1]*(self.slave_errs[i]-self.slave_errs_prev[i])+self.int_gain[i+1]*self.slave_errs[i]*self.interval/1000
+		self.slave_ctrls[i]=self.slave_ctrls[i]+0.05*self.prop_gain[i+1]*(self.slave_errs[i]-self.slave_errs_prev[i])+self.int_gain[i+1]*self.slave_errs[i]*self.interval/10000
+		
 
 
 

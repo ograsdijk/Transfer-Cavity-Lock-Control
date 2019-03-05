@@ -81,9 +81,10 @@ class TransferLock:
 
 		"""
 		Lock counter. For slave lasers, they are considered locked if their error signal RMS is below the threshold 
-		25 consecutive times (can be changed).
+		50 consecutive times (can be changed).
 		"""
 		self.slave_lock_counters=[0]*n
+		self._slave_lock_count=50
 
 		#Flags
 		self.slave_locks_engaged=[False]*n
@@ -91,10 +92,16 @@ class TransferLock:
 		#Queue to calculate average real scanning frequency
 		self._scan_frequency=deque(maxlen=10)
 
+		#Counter for number of times scan was performed (used when logging turned on) before being paused.
+		self._counter=0
+		self._master_counter=0
+		self._slave_counters=[0,0]
+
 		#Helpful flags and events
 		self._scan_thread=None
 		self._scan_flag=False
 		self._scan_finished=Event()
+		self._scan_paused=Event()
 		self._lck_adjust_fin=Event()
 		self._slck_adjust_fin=[]
 		for i in range(n):
@@ -117,7 +124,7 @@ class TransferLock:
 	def obtain_master_signal(self):
 		try:
 			self.master_signal=Signal(self.daq_tasks.time_samples,self.daq_tasks.PD_data[0],self.filter)
-			self.master_signal.find_peaks(criterion=self.master_peak_crit)
+			self.master_signal.find_peaks(criterion=self.master_peak_crit,win_size=self.daq_tasks.ao_scan.n_samples//200)
 		except Exception as e:
 			log.warning(e)
 
@@ -125,7 +132,7 @@ class TransferLock:
 	def obtain_slave_signal(self,ind):
 		try:
 			self.slave_signals[ind]=Signal(self.daq_tasks.time_samples,self.daq_tasks.PD_data[ind+1],self.filter)
-			self.slave_signals[ind].find_peaks(criterion=self.slave_peak_crit[ind])
+			self.slave_signals[ind].find_peaks(criterion=self.slave_peak_crits[ind],win_size=self.daq_tasks.ao_scan.n_samples//200)
 		except Exception as e:
 			log.warning(e)
 
@@ -154,7 +161,6 @@ class TransferLock:
 
 	def lock_master(self):
 
-		self._scan_finished.wait()
 		self._lck_adjust_fin.clear()
 
 		self.refresh_master_lock()
@@ -165,14 +171,13 @@ class TransferLock:
 
 	def lock_laser(self,ind):
 
-		self._scan_finished.wait()
 		self._slck_adjust_fin[ind].clear()
 
 		self.refresh_slave_lock(ind)
 
-		voltages=self.ao_laser.voltages
+		voltages=self.daq_tasks.ao_laser.voltages
 
-		voltages[ind]+=self.slave_ctrl[ind]
+		voltages[ind]+=self.lock.slave_ctrls[ind]
 
 		self.daq_tasks.set_laser_volts(voltages)
 
@@ -199,9 +204,9 @@ class TransferLock:
 		self.master_err_history.append(err) 
 
 		if len(self.master_err_history)<=self.rms_points:
-			self.master_err_rms=math.sqrt(np.sum(np.power(list(self.master_err_history),2)))
+			self.master_err_rms=math.sqrt(np.sum(np.power(list(self.master_err_history),2))/len(list(self.master_err_history)))
 		else:
-			self.master_err_rms=math.sqrt(np.sum(np.power(list(self.master_err_history)[-self.rms_points:],2)))
+			self.master_err_rms=math.sqrt(np.sum(np.power(list(self.master_err_history)[-self.rms_points:],2))/self.rms_points)
 
 		if self.master_err_rms<self.master_rms_crit:
 			self.master_locked_flag=True
@@ -213,18 +218,19 @@ class TransferLock:
 
 		self.slave_err_history[ind].append(err)
 		if len(self.slave_err_history[ind])<=self.rms_points:
-			self.slave_err_rms[ind]=math.sqrt(np.sum(np.power(list(self.slave_err_history[ind]),2)))
+			self.slave_err_rms[ind]=math.sqrt(np.sum(np.power(list(self.slave_err_history[ind]),2))/len(list(self.slave_err_history[ind])))
 		else:
-			self.slave_err_rms[ind]=math.sqrt(np.sum(np.power(list(self.slave_err_history[ind])[-self.rms_points:],2)))
+			self.slave_err_rms[ind]=math.sqrt(np.sum(np.power(list(self.slave_err_history[ind])[-self.rms_points:],2))/self.rms_points)
 
 		if self.slave_err_rms[ind]<self.slave_rms_crits[ind]:
 			self.slave_lock_counters[ind]+=1
-			if self.slave_lock_counters[ind]>25:
+			if self.slave_lock_counters[ind]>self._slave_lock_count:
 				self.slave_locked_flags[ind].set()
 			else:
 				self.slave_locked_flags[ind].clear()
 		else:
 			self.slave_lock_counters[ind]=0
+			self.slave_locked_flags[ind].clear()
 
 
 	"""
@@ -252,6 +258,9 @@ class TransferLock:
 
 	def scan(self,GUI_object=None):
 
+		self._scan_paused.clear()
+		self._counter=0
+
 		while self._scan_flag:
 
 			self._scan_finished.clear()
@@ -271,9 +280,9 @@ class TransferLock:
 					GUI_object.plot_win.all_lines[i+3].set_data([self.lock.master_lockpoint]*2,[-10,10])
 				else:
 					GUI_object.plot_win.all_lines[i+3].set_data([self.lock.slave_lockpoints[i-1]*self.lock.interval+self.lock.master_lockpoint]*2,[-10,10])
-			GUI_object.plot_win.ax.set_xlim(-1, self.daq_tasks.ao_scan.scan_time+1)
-			GUI_object.plot_win.ax.set_ylim(1.2*np.amin(self.daq_tasks.PD_data), 1.2*np.amax(self.daq_tasks.PD_data))
-
+			GUI_object.plot_win.ax.set_xlim(self.daq_tasks.ao_scan.scan_time*0.1, self.daq_tasks.ao_scan.scan_time*1.01)
+			GUI_object.plot_win.ax.set_ylim(np.amin(self.daq_tasks.PD_data)-0.05, np.amax(self.daq_tasks.PD_data)+0.2)
+	
 			if self.master_lock_engaged:
 
 				self.obtain_master_signal()
@@ -286,7 +295,8 @@ class TransferLock:
 
 					self._lck_adjust_fin.wait()
 
-					GUI_object.rms_cav.conifg(text="{:.2f}".format(self.master_err_rms))
+					GUI_object.rms_cav.config(text="{:.2f}".format(self.master_err_rms))
+					GUI_object.real_scoff.config(text='{:.2f}'.format(self.daq_tasks.ao_scan.offset))
 				else:
 					GUI_object.twopeak_status_cv.itemconfig(GUI_object.twopeak_status,fill="red")
 					
@@ -302,10 +312,10 @@ class TransferLock:
 								self._slck_adjust_fin[i].wait()
 
 								GUI_object.rms_laser[i].config(text="{:.2f}".format(self.slave_err_rms[i]))
-								GUI_object.app_volt[i].config(text='{:.2f}'.format(self.daq_tasks.ao_laser.voltages[i]))
+								GUI_object.app_volt[i].config(text='{:.3f}'.format(self.daq_tasks.ao_laser.voltages[i]))
 								GUI_object.laser_r[i].config(text='{:.3f}'.format(GUI_object.lock.slave_Rs[i]))
 
-								if self.slave_locked_flags.is_set():
+								if self.slave_locked_flags[i].is_set():
 									GUI_object.laser_lock_status_cv[i].itemconfig(GUI_object.laser_lock_status[i],fill="#05FF2B")
 								else:
 									GUI_object.laser_lock_status_cv[i].itemconfig(GUI_object.laser_lock_status[i],fill="red")
@@ -320,9 +330,15 @@ class TransferLock:
 				GUI_object.plot_win.ax_err.set_ylim(min(self.master_err_history)-self.master_rms_crit/3, self.master_rms_crit/3+max(self.master_err_history))
 				GUI_object.plot_win.ax_err.set_xlim(min(X), max(X))
 
-				if GUI_object.cav_err_log.get():
-					GUI_object.log_errors[0].append(time()-GUI_object.mt_start)
-					GUI_object.log_errors[1].append(GUI_object.lock.master_err)
+				if GUI_object.master_logging_set:
+					GUI_object.master_time_log[self._master_counter]=time()-GUI_object.mt_start
+					GUI_object.master_error_log[self._master_counter]=GUI_object.lock.master_err
+
+					self._master_counter+=1
+
+					if self._master_counter+1>GUI_object.master_error_log.shape[0]:
+						self.master_error_log.resize(GUI_object.master_error_log.shape[0]+10**6)
+						self.master_time_log.resize(GUI_object.master_error_log.shape[0]+10**6)
 
 				for j in range(len(self.slave_locks_engaged)):
 					if self.slave_locks_engaged[j]:
@@ -333,12 +349,31 @@ class TransferLock:
 						GUI_object.plot_win.ax_err_L[j].set_xlim(min(Xs), max(Xs))
 
 
-					if GUI_object.las_err_log[j].get():
-						GUI_object.log_las_errors[j][0].append(time()-GUI_object.lt_start[j])
-						GUI_object.log_las_errors[j][1].append(GUI_object.slave_err_history[j][-1])
+						if GUI_object.laser_logging_set[j]:
+							GUI_object.slave_time_log[j][self._slave_counters[j]]=time()-GUI_object.lt_start[j]
+							GUI_object.slave_err_log[j][self._slave_counters[j]]=self.slave_err_history[j][-1]
+							GUI_object.slave_rfreq_log[j][self._slave_counters[j]]=GUI_object.lock.get_laser_local_freq(j)
+							GUI_object.slave_lfreq_log[j][self._slave_counters[j]]=GUI_object.lock.get_laser_lockpoint(j)
+							GUI_object.slave_rr_log[j][self._slave_counters[j]]=GUI_object.lock.slave_Rs[j]
+							GUI_object.slave_lr_log[j][self._slave_counters[j]]=GUI_object.lock.slave_lockpoints[j]
 
-			
-			GUI_object.plot_win.fig.canvas.draw()
+							self._slave_counters[j]+=1
+
+							if self._slave_counters[j]+1>GUI_object.slave_err_log[j].shape[0]:
+								GUI_object.slave_time_log[j].resize(GUI_object.slave_err_log[j].shape[0]+10**6)
+								GUI_object.slave_err_log[j].resize(GUI_object.slave_err_log[j].shape[0]+10**6)
+								GUI_object.slave_rfreq_log[j].resize(GUI_object.slave_err_log[j].shape[0]+10**6)
+								GUI_object.slave_lfreq_log[j].resize(GUI_object.slave_err_log[j].shape[0]+10**6)
+								GUI_object.slave_rr_log[j].resize(GUI_object.slave_err_log[j].shape[0]+10**6)
+								GUI_object.slave_lr_log[j].resize(GUI_object.slave_err_log[j].shape[0]+10**6)
+
+
+			self._counter+=1
+
+
+			GUI_object.plot_win.fig.canvas.draw_idle()
+
+		self._scan_paused.set()
 
 
 #################################################################################################################
@@ -383,18 +418,19 @@ class Signal:
 	crossing from the fit. 14 points used for a fit works very well for 1000 points per scan and peaks that are not extremely
 	narrow. This can be changed if necessary. Once the peak is found, the loop is skipped by "win_size".
 	"""
-	def find_peaks(self,criterion=0.5,win_size=7,hs=10):
+	def find_peaks(self,criterion=0.2,win_size=3,hs=10):
 
 		D=self.fltr.apply(self.smooth_y,1,self.dx)
 		self.der_y=D
 		D=self.fltr.apply(D,0,self.dx)
-		D=self.fltr.moving_avg(D,half_size=hs)
+		# D=self.fltr.moving_avg(D,half_size=hs)
 		self.smooth_der=D
-
 
 		points=[]
 		skip=0
-		for i in range(win_size,len(D)-win_size):
+
+		#We discard ignore first 10% of the data. Real scan introduce terrible noise there.
+		for i in range(int(0.1*len(D)),len(D)-win_size):
 
 			if skip>0:
 				skip-=1
@@ -402,12 +438,11 @@ class Signal:
 
 			if D[i-1]<0 and D[i]>0:
 
-				if self.data_y[i]>criterion*self.mx:
-
+				if np.amax(self.data_y[i-win_size:i+win_size])>criterion*self.mx:
 
 					a,b=np.polyfit(self.data_x[i-win_size:i+win_size],D[i-win_size:i+win_size],1)
 					points.append(-b/a)
-					skip=win_size
+					skip=10*win_size
 
 
 		self.peaks_x=np.array(points)
