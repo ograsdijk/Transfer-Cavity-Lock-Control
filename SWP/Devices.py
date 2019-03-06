@@ -123,7 +123,7 @@ class Laser:
 		val=list('{0:010b}'.format(val))
 		
 		if int(val[-2])==0:
-			return " Wide "
+			return "Wide"
 		else:
 			return "Narrow"
 

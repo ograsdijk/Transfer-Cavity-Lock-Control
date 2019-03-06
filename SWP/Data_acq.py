@@ -280,7 +280,7 @@ class TransferLock:
 					GUI_object.plot_win.all_lines[i+3].set_data([self.lock.master_lockpoint]*2,[-10,10])
 				else:
 					GUI_object.plot_win.all_lines[i+3].set_data([self.lock.slave_lockpoints[i-1]*self.lock.interval+self.lock.master_lockpoint]*2,[-10,10])
-			GUI_object.plot_win.ax.set_xlim(self.daq_tasks.ao_scan.scan_time*0.1, self.daq_tasks.ao_scan.scan_time*1.01)
+			GUI_object.plot_win.ax.set_xlim(self.daq_tasks.ao_scan.scan_time*0.2, self.daq_tasks.ao_scan.scan_time*1.01)
 			GUI_object.plot_win.ax.set_ylim(np.amin(self.daq_tasks.PD_data)-0.05, np.amax(self.daq_tasks.PD_data)+0.2)
 	
 			if self.master_lock_engaged:
@@ -429,8 +429,8 @@ class Signal:
 		points=[]
 		skip=0
 
-		#We discard ignore first 10% of the data. Real scan introduce terrible noise there.
-		for i in range(int(0.1*len(D)),len(D)-win_size):
+		#We discard ignore first 10% of the data. Real scan introduces terrible noise there.
+		for i in range(int(0.2*len(D)),len(D)-win_size):
 
 			if skip>0:
 				skip-=1

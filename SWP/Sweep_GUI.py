@@ -546,7 +546,7 @@ class LaserControl:
 	def change_mod(self,*args):
 
 		new_mod=self.mod_var.get()
-		if new_mod==" Wide ":
+		if new_mod=="Wide":
 			self.command_queue.put([self.laser.modulation_type,0])
 		elif new_mod=="Narrow":
 			self.command_queue.put([self.laser.modulation_type,1])
@@ -2001,7 +2001,11 @@ class TransferCavity:
 		
 		#Some parameters are reset
 		self.transfer_lock.master_err_history=deque(maxlen=self.transfer_lock._err_data_length)
+		self.transfer_lock.master_err_history.append(0)
 		self.transfer_lock.master_err_rms=0
+		self.lock.master_err=0
+		self.lock.master_err_prev=0
+		self.lock.master_ctrl=0
 		self.rms_cav.config(text="0")
 
 		#If error signal logging was checked, the hdf5 file is closed.
@@ -2009,10 +2013,12 @@ class TransferCavity:
 			self.master_logging_set=False
 			self.master_error_log.resize(self.transfer_lock._master_counter,axis=0)
 			self.master_time_log.resize(self.transfer_lock._master_counter,axis=0)
-			self.master_error_log[0]=self.master_error_log[1]
-			self.master_time_log[0]=self.master_time_log[1]
-			self.master_error_log[0]=self.master_error_log[1]
-			self.master_time_log[0]=self.master_time_log[1]
+			try:
+				self.master_error_log[0]=self.master_error_log[1]
+				self.master_time_log[0]=self.master_time_log[1]
+			except:
+				pass
+
 			self.master_f.close()
 			
 
@@ -2034,7 +2040,11 @@ class TransferCavity:
 		self.laser_lock_status_cv[ind].itemconfig(self.laser_lock_status[ind],fill="red")
 
 		self.transfer_lock.slave_err_history[ind]=deque(maxlen=self.transfer_lock._err_data_length)
+		self.transfer_lock.slave_err_history[ind].append(0)
 		self.transfer_lock.slave_err_rms[ind]=0
+		self.lock.slave_errs[ind]=0
+		self.lock.slave_errs_prev[ind]=0
+		self.lock.slave_ctrls[ind]=0
 		self.rms_laser[ind].config(text="0")
 
 
@@ -2065,12 +2075,15 @@ class TransferCavity:
 			self.slave_rr_log[ind].resize(self.transfer_lock._slave_counters[ind],axis=0)
 			self.slave_lr_log[ind].resize(self.transfer_lock._slave_counters[ind],axis=0)
 
-			self.slave_err_log[ind][0]=self.slave_err_log[ind][1]
-			self.slave_time_log[ind][0]=self.slave_time_log[ind][1]
-			self.slave_rfreq_log[ind][0]=self.slave_rfreq_log[ind][1]
-			self.slave_lfreq_log[ind][0]=self.slave_lfreq_log[ind][1]
-			self.slave_rr_log[ind][0]=self.slave_rr_log[ind][1]
-			self.slave_lr_log[ind][0]=self.slave_lr_log[ind][1]
+			try:
+				self.slave_err_log[ind][0]=self.slave_err_log[ind][1]
+				self.slave_time_log[ind][0]=self.slave_time_log[ind][1]
+				self.slave_rfreq_log[ind][0]=self.slave_rfreq_log[ind][1]
+				self.slave_lfreq_log[ind][0]=self.slave_lfreq_log[ind][1]
+				self.slave_rr_log[ind][0]=self.slave_rr_log[ind][1]
+				self.slave_lr_log[ind][0]=self.slave_lr_log[ind][1]
+			except:
+				pass
 
 			self.log_las_file[ind].close()
 
@@ -2346,7 +2359,7 @@ class TransferCavity:
 			self.lock.set_laser_lockpoint(swstart,ind)
 			self.laser_lckp[ind].config(text='{:.0f}'.format(current))
 			self.laser_r_lckp[ind].config(text='{:.3f}'.format(self.lock.slave_lockpoints[ind]))
-			self.transfer_lock.slave_locked_flags[ind].wait()
+			self.transfer_lock.slave_locked_flags[ind].wait(60)
 
 
 			#Sweep
@@ -2377,7 +2390,7 @@ class TransferCavity:
 						self.current_deviation[ind].config(text="{:.3f}".format(current)+" MHz")
 						self.laser_lckp[ind].config(text='{:.0f}'.format(current))
 						self.laser_r_lckp[ind].config(text='{:.3f}'.format(self.lock.slave_lockpoints[ind]))
-						self.sw_pr_var[ind].set(abs(current)/abs(interval)*100)
+						self.sw_pr_var[ind].set((current-swstart)/interval*100)
 						self.transfer_lock.slave_locked_flags[ind].clear()
 						self.transfer_lock.slave_lock_counters[ind]=0
 						self.transfer_lock.slave_locked_flags[ind].wait()
@@ -2481,7 +2494,7 @@ class TransferCavity:
 		try:
 			stp=float(self.lck_stp.get())
 			self.lock.set_master_lockpoint(stp)
-			self.real_lckp.config(text='{:.0f}'.format(stp))
+			self.real_lckp.config(text='{:.1f}'.format(stp))
 		except ValueError:
 			pass
 
@@ -2507,6 +2520,7 @@ class TransferCavity:
 			stp=float(self.laser_lsp[ind].get())
 			self.lock.set_laser_lockpoint(stp,ind)
 			self.laser_lckp[ind].config(text='{:.0f}'.format(stp))
+			self.laser_r_lckp[ind].config(text='{:.3f}'.format(self.lock.slave_lockpoints[ind]))
 		except ValueError:
 			pass
 
@@ -2604,8 +2618,8 @@ class PlotWindow:
 		self.lline1,=self.ax.plot([],[],'g-',lw=1)
 		self.lline2,=self.ax.plot([],[],'r-',lw=1)
 		self.mvline,=self.ax.plot([],[],'c--',lw=1)
-		self.lvline1,=self.ax.plot([],[],'k--',lw=1)
-		self.lvline2,=self.ax.plot([],[],'k--',lw=1)
+		self.lvline1,=self.ax.plot([],[],color="lime",linestyle='--',lw=1)
+		self.lvline2,=self.ax.plot([],[],color="pink",linestyle='--',lw=1)
 
 		self.all_lines=[self.msline,self.lline1,self.lline2,self.mvline,self.lvline1,self.lvline2]
 
