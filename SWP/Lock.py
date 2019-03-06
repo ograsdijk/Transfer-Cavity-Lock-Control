@@ -142,11 +142,23 @@ class Lock:
 
 	#User provides deviation in MHz, which has to be translated into units of R using slave laser's FSR
 	def set_laser_lockpoint(self,deviation,ind):
+		if deviation>self._FSR*1000/2:
+			deviation-=self._FSR*1000
+		elif deviation<-self._FSR*1000/2:
+			deviation+=self._FSR*1000
 		self.slave_lockpoints[ind]=self.zero_slave_lockpoints[ind]+deviation/(1000*self._slave_FSR[ind]) 
 
 
 	def move_laser_lockpoint(self,deviation,ind):
-		self.slave_lockpoints[ind]+=deviation/(1000*self._slave_FSR[ind]) #deviation in MHz
+		new_fr=self.get_laser_lockpoint(ind)+deviation
+		if new_fr>self._FSR*1000/2:
+			new_fr-=self._FSR*1000
+			self.slave_lockpoints[ind]=self.zero_slave_lockpoints[ind]+new_fr/(1000*self._slave_FSR[ind]) 
+		elif new_fr<-self._FSR*1000/2:
+			new_fr+=self._FSR*1000
+			self.slave_lockpoints[ind]=self.zero_slave_lockpoints[ind]+new_fr/(1000*self._slave_FSR[ind]) 
+		else:
+			self.slave_lockpoints[ind]+=deviation/(1000*self._slave_FSR[ind]) #deviation in MHz
 
 	"""
 	It is worth mentioning that to translate R unit to MHz, one just has to multiply the deviation from the 

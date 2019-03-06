@@ -2519,7 +2519,7 @@ class TransferCavity:
 		try:
 			stp=float(self.laser_lsp[ind].get())
 			self.lock.set_laser_lockpoint(stp,ind)
-			self.laser_lckp[ind].config(text='{:.0f}'.format(stp))
+			self.laser_lckp[ind].config(text='{:.0f}'.format(self.lock.get_laser_lockpoint(ind)))
 			self.laser_r_lckp[ind].config(text='{:.3f}'.format(self.lock.slave_lockpoints[ind]))
 		except ValueError:
 			pass
