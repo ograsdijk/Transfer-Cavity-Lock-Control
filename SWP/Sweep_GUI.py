@@ -611,6 +611,8 @@ class TransferCavity:
 		#Main window
 		self.parent=parent
 
+		self.simulate=simulate
+
 
 		parent.grid_rowconfigure(0,minsize=2)
 		parent.grid_rowconfigure(2,minsize=2)
@@ -630,6 +632,8 @@ class TransferCavity:
 
 
 		self.lasers=lasers
+		if simulate:
+			self.lasers=[2,2]
 
 		#Additional windows used for settings
 		self.adset_window=None
@@ -645,10 +649,12 @@ class TransferCavity:
 			self.lock=Lock([lasers[0].get_set_wavelength()],config)
 			
 		else:
-			self.lock=Lock([lasers[0].get_set_wavelength(),lasers[1].get_set_wavelength()],config)
-			# self.lock=Lock([1086,1087],config)
+			if not simulate:
+				self.lock=Lock([lasers[0].get_set_wavelength(),lasers[1].get_set_wavelength()],config)
+			else:
+				self.lock=Lock([1086,1087],config)
 
-
+		self.running=False
 		"""
 		Acquiring data and locking. 
 		This class uses the previously defined lock to initialize. It also uses DAQ tasks that the program 
@@ -656,8 +662,8 @@ class TransferCavity:
 		procedure.
 
 		"""
-		self.transfer_lock=TransferLock(self.lock,setup_tasks(config,len(lasers),simulate),config)
-
+		# self.transfer_lock=TransferLock(self.lock,setup_tasks(config,len(lasers),simulate),config)
+		self.transfer_lock=TransferLock(self.lock,setup_tasks(config,2,simulate),config)
 		
 		"""
 		Sweep thread.
@@ -769,17 +775,17 @@ class TransferCavity:
 
 
 		#To make manipulation easier, the lockpoint can also be moved in discrete steps. 
-		self.plus1ms=Button(self.cavity_window_lock,text="+1",width=5,command=lambda: self.move_master_lck(1),font="Arial 10 bold")
+		self.plus1ms=Button(self.cavity_window_lock,text="+0.5",width=5,command=lambda: self.move_master_lck(0.5),font="Arial 10 bold")
 		self.plus1ms.grid(row=7,column=5,sticky=E)
-		self.plus5ms=Button(self.cavity_window_lock,text="+5",width=5,command=lambda: self.move_master_lck(5),font="Arial 10 bold")
+		self.plus5ms=Button(self.cavity_window_lock,text="+1",width=5,command=lambda: self.move_master_lck(1),font="Arial 10 bold")
 		self.plus5ms.grid(row=9,column=5,sticky=E)
-		self.plus10ms=Button(self.cavity_window_lock,text="+10",width=5,command=lambda: self.move_master_lck(10),font="Arial 10 bold")
+		self.plus10ms=Button(self.cavity_window_lock,text="+2",width=5,command=lambda: self.move_master_lck(2),font="Arial 10 bold")
 		self.plus10ms.grid(row=11,column=5,sticky=E)
-		self.minus1ms=Button(self.cavity_window_lock,text="-1",width=5,command=lambda: self.move_master_lck(-1),font="Arial 10 bold")
+		self.minus1ms=Button(self.cavity_window_lock,text="-0.5",width=5,command=lambda: self.move_master_lck(-0.5),font="Arial 10 bold")
 		self.minus1ms.grid(row=7,column=3,sticky=W)
-		self.minus5ms=Button(self.cavity_window_lock,text="-5",width=5,command=lambda: self.move_master_lck(-5),font="Arial 10 bold")
+		self.minus5ms=Button(self.cavity_window_lock,text="-1",width=5,command=lambda: self.move_master_lck(-1),font="Arial 10 bold")
 		self.minus5ms.grid(row=9,column=3,sticky=W)
-		self.minus10ms=Button(self.cavity_window_lock,text="-10",width=5,command=lambda: self.move_master_lck(-10),font="Arial 10 bold")
+		self.minus10ms=Button(self.cavity_window_lock,text="-2",width=5,command=lambda: self.move_master_lck(-2),font="Arial 10 bold")
 		self.minus10ms.grid(row=11,column=3,sticky=W)
 
 
@@ -895,7 +901,6 @@ class TransferCavity:
 		Lasers' frame. This one is also divided into subframes. Two of those frames are initialized and created,
 		although if there's only one laser connected, the bottom laser frame will be greyed out.
 		"""
-
 		self.laser_window=[LabelFrame(parent,text="Laser 1"),LabelFrame(parent,text="Laser 2")]
 		self.laser_window[0].grid(row=3,column=1)
 		self.laser_window[1].grid(row=5,column=1)
@@ -921,6 +926,9 @@ class TransferCavity:
 		self.sweep_type_entry=[None]*2
 		self.sweep_speed_entry=[None]*2
 		self.sweep_time_speed_label=[None]*2
+
+		self.cont_sweep_running=[False,False]
+		self.discr_sweep_running=[False,False]
 
 		self.sw_progress=[None]*2
 		self.sw_pr_var=[DoubleVar(),DoubleVar()]
@@ -979,6 +987,12 @@ class TransferCavity:
 		self.slave_lr_log=[None]*2
 
 		self.lt_start=[None]*2
+
+		self.mlog_default_directory="./SWP/logs/"
+		self.laslog_default_directories=["./SWP/logs/","./SWP/logs/"]
+
+		self.mlog_filename=None
+		self.laslog_filenames=[None,None]
 		
 		#We loop over two lasers. One of them might be just greyed out.
 		for i in range(2):			
@@ -1354,13 +1368,31 @@ class TransferCavity:
 			self.sweep_step_entry[ind].config(state="normal")
 			self.sw_button[ind].configure(command=lambda x=ind: self.sweep_laser_th(x))
 
+
+	def new_master_logfile(self):
+		flname=filedialog.asksaveasfilename(initialdir = os.path.dirname(os.path.realpath(__file__))+"/logs",title = "Select file",filetypes = (("Log files","*.hdf5"),))
+
+		if flname=="":
+			return
+		else:
+			self.mlog_filename=flname+".hdf5"
+
+
+	def new_laser_logfile(self,ind):
+		flname=filedialog.asksaveasfilename(initialdir = os.path.dirname(os.path.realpath(__file__))+"/logs",title = "Select file",filetypes = (("Log files","*.hdf5"),))
+
+		if flname=="":
+			return
+		else:
+			self.laslog_filenames[ind]=flname+".hdf5"
+
+
 	"""
 	The function below opens a separate small window that shows currently used DAQ channels: outputs for cavity 
 	scanning and lasers' piezo control, and inputs taking information from photodetectors for master and slave
 	lasers. The window allows to change these channels.
 	"""
 	def change_daq_channels(self):
-
 
 		n=len(self.lasers)
 
@@ -1489,8 +1521,9 @@ class TransferCavity:
 		self.adset_window.grid_rowconfigure(10,minsize=5)
 		self.adset_window.grid_rowconfigure(12,minsize=5)
 		self.adset_window.grid_rowconfigure(14,minsize=5)
-		self.adset_window.grid_rowconfigure(16,minsize=30)
-		self.adset_window.grid_rowconfigure(18,minsize=10)
+		self.adset_window.grid_rowconfigure(16,minsize=5)
+		self.adset_window.grid_rowconfigure(18,minsize=30)
+		self.adset_window.grid_rowconfigure(20,minsize=10)
 
 		#Labels 
 		Label(self.adset_window,text="Current Settings",font="Arial 10 bold").grid(row=1,column=5)
@@ -1501,6 +1534,7 @@ class TransferCavity:
 		Label(self.adset_window,text="RMS Master Lock Threshold [ms]:",font="Arial 10 bold").grid(row=11,column=1,sticky=W)
 		Label(self.adset_window,text="RMS Points:",font="Arial 10 bold").grid(row=13,column=1,sticky=W)
 		Label(self.adset_window,text="Peak criterion [MAX]:",font="Arial 10 bold").grid(row=15,column=1,sticky=W)
+		Label(self.adset_window,text="Log filename:",font="Arial 10 bold").grid(row=17,column=1,sticky=W)
 
 
 		#Containers
@@ -1527,6 +1561,8 @@ class TransferCavity:
 		self.new_rms_points_entry.grid(row=13,column=3)
 		self.new_peak_crit_entry=Entry(self.adset_window,textvariable=self.new_peak_crit,width=12)
 		self.new_peak_crit_entry.grid(row=15,column=3)
+		self.new_logfile=Button(self.adset_window,command=self.new_master_logfile,text="New log file",width=12)
+		self.new_logfile.grid(row=17,column=3)
 
 		#Here, we retreive variables from different classes and put them on the GUI
 		Label(self.adset_window,text="{:.0f}".format(1000*self.lock._FSR)+" MHz",font="Arial 10").grid(row=3,column=5,sticky=E)
@@ -1536,10 +1572,15 @@ class TransferCavity:
 		Label(self.adset_window,text="{:.3f}".format(self.transfer_lock.master_rms_crit)+" ms",font="Arial 10").grid(row=11,column=5,sticky=E)
 		Label(self.adset_window,text="{:.0f}".format(self.transfer_lock.rms_points),font="Arial 10").grid(row=13,column=5,sticky=E)
 		Label(self.adset_window,text="{:.2f}".format(self.transfer_lock.master_peak_crit)+" MAX",font="Arial 10").grid(row=15,column=5,sticky=E)
+		if self.mlog_filename is not None:
+			Label(self.adset_window,text=self.mlog_filename,font="Arial 10").grid(row=17,column=5,sticky=E)
+		else:
+			Label(self.adset_window,text="default",font="Arial 10").grid(row=17,column=5,sticky=E)
+
 
 		#Small frame for the buttons (Update,Cancel,Default)
 		self.button_frame=Frame(self.adset_window)
-		self.button_frame.grid(row=17,column=1,columnspan=5)
+		self.button_frame.grid(row=19,column=1,columnspan=5)
 
 		self.button_frame.grid_columnconfigure(1,minsize=10)
 		self.button_frame.grid_columnconfigure(3,minsize=10)
@@ -1575,8 +1616,9 @@ class TransferCavity:
 		self.adset_window.grid_rowconfigure(6,minsize=5)
 		self.adset_window.grid_rowconfigure(8,minsize=5)
 		self.adset_window.grid_rowconfigure(10,minsize=5)
-		self.adset_window.grid_rowconfigure(12,minsize=30)
-		self.adset_window.grid_rowconfigure(14,minsize=10)
+		self.adset_window.grid_rowconfigure(12,minsize=5)
+		self.adset_window.grid_rowconfigure(14,minsize=30)
+		self.adset_window.grid_rowconfigure(16,minsize=10)
 
 
 
@@ -1587,7 +1629,7 @@ class TransferCavity:
 		Label(self.adset_window,text="Slave Laser Wavelength [nm]:",font="Arial 10 bold").grid(row=7,column=1,sticky=W)
 		Label(self.adset_window,text="RMS Slave Lock Threshold [MHz]:",font="Arial 10 bold").grid(row=9,column=1,sticky=W)
 		Label(self.adset_window,text="Peak criterion [MAX]:",font="Arial 10 bold").grid(row=11,column=1,sticky=W)
-
+		Label(self.adset_window,text="Log filename:",font="Arial 10 bold").grid(row=13,column=1,sticky=W)
 
 
 		self.new_minV=StringVar()
@@ -1607,6 +1649,8 @@ class TransferCavity:
 		self.new_rms_thr_entry.grid(row=9,column=3)
 		self.new_peak_crit_entry=Entry(self.adset_window,textvariable=self.new_peak_crit,width=12)
 		self.new_peak_crit_entry.grid(row=11,column=3)
+		self.new_logfile=Button(self.adset_window,command=lambda: self.new_laser_logfile(ind),text="New log file",width=12)
+		self.new_logfile.grid(row=13,column=3)
 
 
 		Label(self.adset_window,text="{:.2f}".format(self.transfer_lock.daq_tasks.ao_laser.mn_voltages[ind]),font="Arial 10").grid(row=3,column=5,sticky=E)
@@ -1615,9 +1659,14 @@ class TransferCavity:
 		Label(self.adset_window,text="{:.3f}".format(self.transfer_lock.slave_rms_crits[ind])+" MHz",font="Arial 10").grid(row=9,column=5,sticky=E)
 		Label(self.adset_window,text="{:.2f}".format(self.transfer_lock.slave_peak_crits[ind])+" MAX",font="Arial 10").grid(row=11,column=5,sticky=E)
 
+		if self.laslog_filenames[ind] is not None:
+			Label(self.adset_window,text=self.laslog_filenames[ind],font="Arial 10").grid(row=13,column=5,sticky=E)
+		else:
+			Label(self.adset_window,text="default",font="Arial 10").grid(row=13,column=5,sticky=E)
+
 
 		self.button_frame=Frame(self.adset_window)
-		self.button_frame.grid(row=13,column=1,columnspan=5)
+		self.button_frame.grid(row=15,column=1,columnspan=5)
 
 		self.button_frame.grid_columnconfigure(1,minsize=10)
 		self.button_frame.grid_columnconfigure(3,minsize=10)
@@ -1918,7 +1967,10 @@ class TransferCavity:
 
 			#If error logging is checked, we create an empty array.
 			if self.cav_err_log.get():
-				filename="./SWP/logs/logM"+datetime.datetime.fromtimestamp(time()).strftime('-%Y-%m-%d-%H.%M.%S')+".hdf5"
+				if self.mlog_filename is None:
+					filename=self.mlog_default_directory+"logM"+datetime.datetime.fromtimestamp(time()).strftime('-%Y-%m-%d-%H.%M.%S')+".hdf5"
+				else:
+					filename=self.mlog_filename
 				self.master_f=h5py.File(filename,'w')
 
 				self.master_error_log=self.master_f.create_dataset('Errors',(10**6,),maxshape=(None,),dtype='float16')
@@ -1963,7 +2015,11 @@ class TransferCavity:
 				self.engage_laser_lock_button[ind].config(text="Disengage Lock",command=lambda x=ind: self.disengage_laser_lock(x))
 
 			if self.las_err_log[ind].get():
-				filename="./SWP/logs/logS"+str(ind+1)+datetime.datetime.fromtimestamp(time()).strftime('-%Y-%m-%d-%H.%M.%S')+".hdf5"
+
+				if self.laslog_filenames[ind] is None:
+					filename=self.laslog_default_directories[ind]+"logS"+datetime.datetime.fromtimestamp(time()).strftime('-%Y-%m-%d-%H.%M.%S')+".hdf5"
+				else:
+					filename=self.laslog_filenames[ind]
 				self.log_las_file[ind]=h5py.File(filename,'w')
 
 				self.slave_err_log[ind]=self.log_las_file[ind].create_dataset('Errors',(10**6,),maxshape=(None,),dtype='float16')
@@ -1973,7 +2029,8 @@ class TransferCavity:
 				self.slave_rr_log[ind]=self.log_las_file[ind].create_dataset('RealR',(10**6,),maxshape=(None,),dtype='float16')
 				self.slave_lr_log[ind]=self.log_las_file[ind].create_dataset('LockR',(10**6,),maxshape=(None,),dtype='float16')
 
-				self.log_las_file[ind].attrs['SetFrequency']=self.lasers[ind].get_set_frequency()
+				if not self.simulate:
+					self.log_las_file[ind].attrs['SetFrequency']=self.lasers[ind].get_set_frequency()
 
 				self.lt_start[ind]=time()
 
@@ -1991,9 +2048,6 @@ class TransferCavity:
 		self.transfer_lock.master_lock_engaged=False
 
 		self.cav_err_log_check.config(state="normal")
-
-		self.twopeak_status_cv.itemconfig(self.twopeak_status,fill="red")
-		self.cav_lock_status_cv.itemconfig(self.cav_lock_status,fill="red")
 
 		self.cav_lock_state.config(text="Disengaged",fg="red")
 		self.engage_lock_button.config(text="Engage Lock",command=self.engage_cavity_lock)
@@ -2020,7 +2074,11 @@ class TransferCavity:
 				pass
 
 			self.master_f.close()
-			
+		
+		sleep(0.01)
+
+		self.twopeak_status_cv.itemconfig(self.twopeak_status,fill="red")
+		self.cav_lock_status_cv.itemconfig(self.cav_lock_status,fill="red")
 
 		for i in range(len(self.lasers)):
 			if self.transfer_lock.slave_locks_engaged[i]:
@@ -2030,12 +2088,13 @@ class TransferCavity:
 	#Method called when only one of slave laser's lock is being disengaged.
 	def disengage_laser_lock(self,ind,sweep=False):
 
+		self.transfer_lock.slave_locks_engaged[ind]=False
+		self.transfer_lock.slave_locked_flags[ind].clear()
+
 		self.las_err_log_check[ind].config(state="normal")
 
 		self.laser_lock_state[ind].config(text="Disengaged",fg="red")
 
-		self.transfer_lock.slave_locks_engaged[ind]=False
-		self.transfer_lock.slave_locked_flags[ind].clear()
 
 		self.laser_lock_status_cv[ind].itemconfig(self.laser_lock_status[ind],fill="red")
 
@@ -2095,6 +2154,7 @@ class TransferCavity:
 	"""
 	def sweep_laser_th(self,ind):
 		if self.transfer_lock.master_lock_engaged:
+			self.discr_sweep_running[ind]=True
 			try:
 				self.sweep_thread[ind].start()
 			except RuntimeError:
@@ -2104,7 +2164,7 @@ class TransferCavity:
 
 	def conitnuous_sweep_th(self,ind):
 		if self.transfer_lock.master_lock_engaged:
-			self.cont_sweep_running=True
+			self.cont_sweep_running[ind]=True
 			try:
 				self.cont_sweep_thread[ind].start()
 			except RuntimeError:
@@ -2127,32 +2187,28 @@ class TransferCavity:
 			#Getting parameters
 			try:
 				swstart=float(self.sweep_start[ind].get())
-				if swstart<-self.lock._FSR*1000/2:
-					swstart=-self.lock._FSR*1000/2
 			except ValueError:
 				return
 						
 			try:
 				swstop=float(self.sweep_stop[ind].get())
-				if swstop>self.lock._FSR*1000/2:
-					swstop=self.lock._FSR*1000/2
 			except ValueError:
 				return
 			
 			if swstart==swstop:
 				return
-			elif swstart>swstop:
-				swstart,swstop=swstop,swstart
-				self.sweep_start[ind].set(swstart)
-				self.sweep_stop[ind].set(swstop)
+
+			lower_bound=min(swstart,swstop)
+			upper_bound=max(swstart,swstop)
 
 			try:
 				swstep=abs(float(self.sweep_step[ind].get()))
 				if swstep<1:
 					swstep=1
-				elif swstep>(swstop-swstart):
-					swstep=swstop-swstart
-				self.sweep_step[ind].set(swstep)
+					self.sweep_step[ind].set(swstep)
+				elif swstep>upper_bound-lower_bound:
+					swstep=upper_bound-lower_bound
+					self.sweep_step[ind].set(swstep)
 			except ValueError:
 				return
 
@@ -2160,26 +2216,29 @@ class TransferCavity:
 			swwait=self.sweep_wait[ind].get()
 
 			#Get all the lockpoints to use
-			no_steps=1+math.ceil((swstop-swstart)/swstep)
+			no_steps=1+math.ceil((upper_bound-lower_bound)/swstep)
 			freqs=[]
 			for i in range(no_steps):
-				if swstart+i*swstep<=swstop:
-					freqs.append(swstart+i*swstep)
+				if lower_bound+i*swstep<=upper_bound:
+					freqs.append(lower_bound+i*swstep)
 				else:
-					freqs.append(swstop)
+					freqs.append(upper_bound)
 					break
 
+			if swstop<swstart:
+				freqs=freqs[::-1]
+
+
 			#Disabling buttons and entry fields
-			for j in range(len(self.lasers)):
-				self.update_laser_lock_button[j].config(state="disabled")
-				self.engage_laser_lock_button[j].config(state="disabled")
-				self.las_err_log_check[j].config(state="disabled")
-				self.minus10MHz[j].config(state="disabled")
-				self.minus5MHz[j].config(state="disabled")
-				self.minus1MHz[j].config(state="disabled")
-				self.plus10MHz[j].config(state="disabled")
-				self.plus5MHz[j].config(state="disabled")
-				self.plus1MHz[j].config(state="disabled")
+			self.update_laser_lock_button[ind].config(state="disabled")
+			self.engage_laser_lock_button[ind].config(state="disabled")
+			self.las_err_log_check[ind].config(state="disabled")
+			self.minus10MHz[ind].config(state="disabled")
+			self.minus5MHz[ind].config(state="disabled")
+			self.minus1MHz[ind].config(state="disabled")
+			self.plus10MHz[ind].config(state="disabled")
+			self.plus5MHz[ind].config(state="disabled")
+			self.plus1MHz[ind].config(state="disabled")
 			self.minus10ms.config(state="disabled")
 			self.minus5ms.config(state="disabled")
 			self.minus1ms.config(state="disabled")
@@ -2187,9 +2246,7 @@ class TransferCavity:
 			self.plus5ms.config(state="disabled")
 			self.plus1ms.config(state="disabled")
 
-			if len(self.lasers)>1:
-				if not self.transfer_lock.slave_locks_engaged[1-ind]:
-					self.sw_button[1-ind].config(state="disabled")
+
 			self.sw_button[ind].config(text="Stop",command=lambda: self.stop_sweep(ind))
 			self.run_scan.config(state="disabled")
 			self.update_lock.config(state="disabled")
@@ -2209,18 +2266,19 @@ class TransferCavity:
 			#Sweep
 			steps_done=0
 			for fr in freqs:
-				if self.stop_swp:
-					self.stop_swp=False
+				if not self.discr_sweep_running[ind]:
 					break
 				self.transfer_lock.slave_locked_flags[ind].clear()
 				self.transfer_lock.slave_lock_counters[ind]=0
 				self.lock.set_laser_lockpoint(fr,ind)
-				self.current_deviation[ind].config(text="{:.1f}".format(fr)+" MHz")
+				self.current_deviation[ind].config(text="{:.3f}".format(fr)+" MHz")
 				self.current_dev_process[ind].config(text="Locking...")
-				self.laser_lckp[ind].config(text='{:.0f}'.format(fr))
+				self.laser_lckp[ind].config(text='{:.0f}'.format(self.lock.get_laser_lockpoint(ind)))
 				self.laser_r_lckp[ind].config(text='{:.3f}'.format(self.lock.slave_lockpoints[ind]))
 
-				self.transfer_lock.slave_locked_flags[ind].wait()
+				self.transfer_lock.slave_locked_flags[ind].wait(60)
+				if not self.transfer_lock.slave_locked_flags[ind].is_set():
+					break
 
 				self.current_dev_process[ind].config(text="Waiting")
 
@@ -2234,35 +2292,53 @@ class TransferCavity:
 
 
 			#Bring back all the fields to normal
-			for j in range(len(self.lasers)):
-				self.update_laser_lock_button[j].config(state="normal")
-				self.engage_laser_lock_button[j].config(state="normal")
-				self.las_err_log_check[j].config(state="normal")
-				self.minus10MHz[j].config(state="normal")
-				self.minus5MHz[j].config(state="normal")
-				self.minus1MHz[j].config(state="normal")
-				self.plus10MHz[j].config(state="normal")
-				self.plus5MHz[j].config(state="normal")
-				self.plus1MHz[j].config(state="normal")
-			self.minus10ms.config(state="normal")
-			self.minus5ms.config(state="normal")
-			self.minus1ms.config(state="normal")
-			self.plus10ms.config(state="normal")
-			self.plus5ms.config(state="normal")
-			self.plus1ms.config(state="normal")
-			self.run_scan.config(state="normal")
-			self.update_lock.config(state="normal")
-			self.engage_lock_button.config(state="normal")
+			self.update_laser_lock_button[ind].config(state="normal")
+			self.engage_laser_lock_button[ind].config(state="normal")
+			self.las_err_log_check[ind].config(state="normal")
+			self.minus10MHz[ind].config(state="normal")
+			self.minus5MHz[ind].config(state="normal")
+			self.minus1MHz[ind].config(state="normal")
+			self.plus10MHz[ind].config(state="normal")
+			self.plus5MHz[ind].config(state="normal")
+			self.plus1MHz[ind].config(state="normal")
 			self.set_volt[ind].config(state="normal")
 			self.new_volt_entry[ind].config(state="normal")
 			self.sweep_type_entry[ind].config(state="normal")
-			self.move_offset_p.config(state="normal")
-			self.move_offset_m.config(state="normal")
-			self.set_offset.config(state="normal")
+
 
 			if len(self.lasers)>1:
-				if not self.transfer_lock.slave_locks_engaged[1-ind]>1:
-					self.sw_button[1-ind].config(state="normal")
+				if self.discr_sweep_running[1-ind] or self.cont_sweep_running[1-ind]:
+					pass
+				else:
+					self.minus10ms.config(state="normal")
+					self.minus5ms.config(state="normal")
+					self.minus1ms.config(state="normal")
+					self.plus10ms.config(state="normal")
+					self.plus5ms.config(state="normal")
+					self.plus1ms.config(state="normal")
+					self.run_scan.config(state="normal")
+					self.update_lock.config(state="normal")
+					self.engage_lock_button.config(state="normal")
+					self.move_offset_p.config(state="normal")
+					self.move_offset_m.config(state="normal")
+					self.set_offset.config(state="normal")
+
+			else:
+				self.minus10ms.config(state="normal")
+				self.minus5ms.config(state="normal")
+				self.minus1ms.config(state="normal")
+				self.plus10ms.config(state="normal")
+				self.plus5ms.config(state="normal")
+				self.plus1ms.config(state="normal")
+				self.run_scan.config(state="normal")
+				self.update_lock.config(state="normal")
+				self.engage_lock_button.config(state="normal")
+				self.move_offset_p.config(state="normal")
+				self.move_offset_m.config(state="normal")
+				self.set_offset.config(state="normal")
+
+
+
 			self.sw_button[ind].config(text="Sweep",command=lambda: self.sweep_laser_th(ind),state="normal")
 			
 			self.sw_pr_var[ind].set(0)
@@ -2274,7 +2350,7 @@ class TransferCavity:
 	#Method invoked when user wants to stop frequency scan
 	def stop_sweep(self,ind):
 		self.sw_button[ind].config(text="Stopping...",state="disabled")
-		self.stop_swp=True
+		self.discr_sweep_running[ind]=False
 
 
 	"""
@@ -2289,46 +2365,43 @@ class TransferCavity:
 			#Getting parameters
 			try:
 				swstart=float(self.sweep_start[ind].get())
-				if swstart<-self.lock._FSR*1000/2:
-					swstart=-self.lock._FSR*1000/2
 			except ValueError:
 				return
 						
 			try:
 				swstop=float(self.sweep_stop[ind].get())
-				if swstop>self.lock._FSR*1000/2:
-					swstop=self.lock._FSR*1000/2
 			except ValueError:
 				return
 			
 			if swstart==swstop:
 				return
-			elif swstart>swstop:
-				swstart,swstop=swstop,swstart
-				self.sweep_start[ind].set(swstart)
-				self.sweep_stop[ind].set(swstop)
 
+
+			lower_bound=min(swstart,swstop)
+			upper_bound=max(swstart,swstop)
 
 			swspd=self.sweep_speed[ind].get()
 			wait=max(50,2*self.transfer_lock.daq_tasks.ao_scan.scan_time)/1000 #Wait time in seconds
 			step=swspd*wait
 			
-			interval=swstop-swstart
+			interval=abs(swstop-swstart)
 			current=swstart
 
-			increasing=True
+			if swstart<swstop:
+				increasing=True
+			else:
+				increasing=False
 
 			#Disabling buttons and entry fields
-			for j in range(len(self.lasers)):
-				self.update_laser_lock_button[j].config(state="disabled")
-				self.engage_laser_lock_button[j].config(state="disabled")
-				self.las_err_log_check[j].config(state="disabled")
-				self.minus10MHz[j].config(state="disabled")
-				self.minus5MHz[j].config(state="disabled")
-				self.minus1MHz[j].config(state="disabled")
-				self.plus10MHz[j].config(state="disabled")
-				self.plus5MHz[j].config(state="disabled")
-				self.plus1MHz[j].config(state="disabled")
+			self.update_laser_lock_button[ind].config(state="disabled")
+			self.engage_laser_lock_button[ind].config(state="disabled")
+			self.las_err_log_check[ind].config(state="disabled")
+			self.minus10MHz[ind].config(state="disabled")
+			self.minus5MHz[ind].config(state="disabled")
+			self.minus1MHz[ind].config(state="disabled")
+			self.plus10MHz[ind].config(state="disabled")
+			self.plus5MHz[ind].config(state="disabled")
+			self.plus1MHz[ind].config(state="disabled")
 			self.minus10ms.config(state="disabled")
 			self.minus5ms.config(state="disabled")
 			self.minus1ms.config(state="disabled")
@@ -2336,9 +2409,7 @@ class TransferCavity:
 			self.plus5ms.config(state="disabled")
 			self.plus1ms.config(state="disabled")
 
-			if len(self.lasers)>1:
-				if not self.transfer_lock.slave_locks_engaged[1-ind]:
-					self.sw_button[1-ind].config(state="disabled")
+
 			self.sw_button[ind].config(text="Stop",command=lambda x=ind: self.stop_cont_sweep(x))
 			self.run_scan.config(state="disabled")
 			self.update_lock.config(state="disabled")
@@ -2347,6 +2418,8 @@ class TransferCavity:
 			self.new_volt_entry[ind].config(state="disabled")
 			self.sweep_type_entry[ind].config(state="disabled")
 			self.sweep_speed_entry[ind].config(state="disabled")
+			self.sweep_start_entry[ind].config(state="disabled")
+			self.sweep_stop_entry[ind].config(state="disabled")
 			self.move_offset_p.config(state="disabled")
 			self.move_offset_m.config(state="disabled")
 			self.set_offset.config(state="disabled")
@@ -2357,22 +2430,22 @@ class TransferCavity:
 				self.engage_laser_lock(ind,sweep=True)
 
 			self.lock.set_laser_lockpoint(swstart,ind)
-			self.laser_lckp[ind].config(text='{:.0f}'.format(current))
+			self.laser_lckp[ind].config(text='{:.0f}'.format(self.lock.get_laser_lockpoint(ind)))
 			self.laser_r_lckp[ind].config(text='{:.3f}'.format(self.lock.slave_lockpoints[ind]))
 			self.transfer_lock.slave_locked_flags[ind].wait(60)
 
 
 			#Sweep
-			while self.cont_sweep_running:
+			while self.cont_sweep_running[ind]:
 				if increasing:
-					if current+step>swstop:
+					if current+step>upper_bound:
 						increasing=False
-						current=swstop
-						self.lock.set_laser_lockpoint(swstop,ind)
+						current=upper_bound
+						self.lock.set_laser_lockpoint(upper_bound,ind)
 						self.current_deviation[ind].config(text="{:.3f}".format(current)+" MHz")
-						self.laser_lckp[ind].config(text='{:.0f}'.format(current))
+						self.laser_lckp[ind].config(text='{:.0f}'.format(self.lock.get_laser_lockpoint(ind)))
 						self.laser_r_lckp[ind].config(text='{:.3f}'.format(self.lock.slave_lockpoints[ind]))
-						self.sw_pr_var[ind].set((current-swstart)/interval*100)
+						self.sw_pr_var[ind].set((current-lower_bound)/interval*100)
 						self.transfer_lock.slave_locked_flags[ind].clear()
 						self.transfer_lock.slave_lock_counters[ind]=0
 						self.transfer_lock.slave_locked_flags[ind].wait()
@@ -2383,14 +2456,14 @@ class TransferCavity:
 					self.current_dev_process[ind].config(text="Increasing")
 
 				else:
-					if current-step<swstart:
+					if current-step<lower_bound:
 						increasing=True
-						current=swstart
-						self.lock.set_laser_lockpoint(swstart,ind)
+						current=lower_bound
+						self.lock.set_laser_lockpoint(lower_bound,ind)
 						self.current_deviation[ind].config(text="{:.3f}".format(current)+" MHz")
-						self.laser_lckp[ind].config(text='{:.0f}'.format(current))
+						self.laser_lckp[ind].config(text='{:.0f}'.format(self.lock.get_laser_lockpoint(ind)))
 						self.laser_r_lckp[ind].config(text='{:.3f}'.format(self.lock.slave_lockpoints[ind]))
-						self.sw_pr_var[ind].set((current-swstart)/interval*100)
+						self.sw_pr_var[ind].set((current-lower_bound)/interval*100)
 						self.transfer_lock.slave_locked_flags[ind].clear()
 						self.transfer_lock.slave_lock_counters[ind]=0
 						self.transfer_lock.slave_locked_flags[ind].wait()
@@ -2402,9 +2475,9 @@ class TransferCavity:
 
 
 				self.current_deviation[ind].config(text="{:.3f}".format(current)+" MHz")
-				self.laser_lckp[ind].config(text='{:.0f}'.format(current))
+				self.laser_lckp[ind].config(text='{:.0f}'.format(self.lock.get_laser_lockpoint(ind)))
 				self.laser_r_lckp[ind].config(text='{:.3f}'.format(self.lock.slave_lockpoints[ind]))
-				self.sw_pr_var[ind].set((current-swstart)/interval*100)
+				self.sw_pr_var[ind].set((current-lower_bound)/interval*100)
 
 				sleep(wait)
 
@@ -2414,36 +2487,52 @@ class TransferCavity:
 
 
 			#Bring back all the fields to normal
-			for j in range(len(self.lasers)):
-				self.update_laser_lock_button[j].config(state="normal")
-				self.engage_laser_lock_button[j].config(state="normal")
-				self.las_err_log_check[j].config(state="normal")
-				self.minus10MHz[j].config(state="normal")
-				self.minus5MHz[j].config(state="normal")
-				self.minus1MHz[j].config(state="normal")
-				self.plus10MHz[j].config(state="normal")
-				self.plus5MHz[j].config(state="normal")
-				self.plus1MHz[j].config(state="normal")
-			self.minus10ms.config(state="normal")
-			self.minus5ms.config(state="normal")
-			self.minus1ms.config(state="normal")
-			self.plus10ms.config(state="normal")
-			self.plus5ms.config(state="normal")
-			self.plus1ms.config(state="normal")
-			self.run_scan.config(state="normal")
-			self.update_lock.config(state="normal")
-			self.engage_lock_button.config(state="normal")
+			self.update_laser_lock_button[ind].config(state="normal")
+			self.engage_laser_lock_button[ind].config(state="normal")
+			self.las_err_log_check[ind].config(state="normal")
+			self.minus10MHz[ind].config(state="normal")
+			self.minus5MHz[ind].config(state="normal")
+			self.minus1MHz[ind].config(state="normal")
+			self.plus10MHz[ind].config(state="normal")
+			self.plus5MHz[ind].config(state="normal")
+			self.plus1MHz[ind].config(state="normal")
 			self.set_volt[ind].config(state="normal")
 			self.new_volt_entry[ind].config(state="normal")
 			self.sweep_type_entry[ind].config(state="normal")
 			self.sweep_speed_entry[ind].config(state="normal")
-			self.move_offset_p.config(state="normal")
-			self.move_offset_m.config(state="normal")
-			self.set_offset.config(state="normal")
+			self.sweep_start_entry[ind].config(state="normal")
+			self.sweep_stop_entry[ind].config(state="normal")
 
 			if len(self.lasers)>1:
-				if not self.transfer_lock.slave_locks_engaged[1-ind]>1:
-					self.sw_button[1-ind].config(state="normal")
+				if self.discr_sweep_running[1-ind] or self.cont_sweep_running[1-ind]:
+					pass
+				else:
+					self.minus10ms.config(state="normal")
+					self.minus5ms.config(state="normal")
+					self.minus1ms.config(state="normal")
+					self.plus10ms.config(state="normal")
+					self.plus5ms.config(state="normal")
+					self.plus1ms.config(state="normal")
+					self.run_scan.config(state="normal")
+					self.update_lock.config(state="normal")
+					self.engage_lock_button.config(state="normal")
+					self.move_offset_p.config(state="normal")
+					self.move_offset_m.config(state="normal")
+					self.set_offset.config(state="normal")
+
+			else:
+				self.minus10ms.config(state="normal")
+				self.minus5ms.config(state="normal")
+				self.minus1ms.config(state="normal")
+				self.plus10ms.config(state="normal")
+				self.plus5ms.config(state="normal")
+				self.plus1ms.config(state="normal")
+				self.run_scan.config(state="normal")
+				self.update_lock.config(state="normal")
+				self.engage_lock_button.config(state="normal")
+				self.move_offset_p.config(state="normal")
+				self.move_offset_m.config(state="normal")
+				self.set_offset.config(state="normal")
 
 			self.sw_button[ind].config(text="Sweep",command=lambda: self.conitnuous_sweep_th(ind),state="normal")
 			
@@ -2456,7 +2545,7 @@ class TransferCavity:
 	#Method invoked when user wants to stop frequency scan
 	def stop_cont_sweep(self,ind):
 		self.sw_button[ind].config(text="Stopping...",state="disabled")
-		self.cont_sweep_running=False
+		self.cont_sweep_running[ind]=False
 
 
 	#Method letting the user to directly set voltage on the laser.
@@ -2538,6 +2627,7 @@ class TransferCavity:
 		self.scan_amp_entry.config(state="disabled")
 		self.cav_settings.config(state="disabled")
 		self.change_channels.config(state="disabled")
+		self.save_configuration.config(state="disabled")
 		
 		#Changing flags
 		self.transfer_lock.start_scan()
@@ -2572,11 +2662,12 @@ class TransferCavity:
 		self.scan_amp_entry.config(state="normal")
 		self.cav_settings.config(state="normal")
 		self.change_channels.config(state="normal")
+		self.save_configuration.config(state="normal")
 		for i in range(len(self.lasers)):
 			self.laser_settings[i].config(state="normal")
 
-		
-		self.disengage_cavity_lock()
+		if self.transfer_lock.master_lock_engaged:
+			self.disengage_cavity_lock()
 
 
 #################################################################################################################
@@ -2618,8 +2709,8 @@ class PlotWindow:
 		self.lline1,=self.ax.plot([],[],'g-',lw=1)
 		self.lline2,=self.ax.plot([],[],'r-',lw=1)
 		self.mvline,=self.ax.plot([],[],'c--',lw=1)
-		self.lvline1,=self.ax.plot([],[],color="lime",linestyle='--',lw=1)
-		self.lvline2,=self.ax.plot([],[],color="pink",linestyle='--',lw=1)
+		self.lvline1,=self.ax.plot([],[],color="green",linestyle='--',lw=1)
+		self.lvline2,=self.ax.plot([],[],color="red",linestyle='--',lw=1)
 
 		self.all_lines=[self.msline,self.lline1,self.lline2,self.mvline,self.lvline1,self.lvline2]
 
@@ -2694,7 +2785,7 @@ class LaserConnect:
 		self.cfg_filename=Label(parent,wraplengt=175,text="DEFAULT")
 		self.cfg_filename.grid(row=3,column=1,sticky=N)
 
-		self.cfg_button=Button(parent,text="Choose config",width=15,command=self.dialbox)
+		self.cfg_button=Button(parent,text="Choose config",width=15,font="Arial 10 bold",command=self.dialbox)
 		self.cfg_button.grid(row=4,column=1)
 
 		
@@ -2741,6 +2832,8 @@ class LaserConnect:
 
 		if len(L)==0:
 			self.caught_err.configure(text="Didn't find any devices \n connected to the computer")
+			pw=PlotWindow(self.plot_frame)
+			self.TC=TransferCavity(self.trans_frame,pw,L,self.config,self.sim)
 
 		elif len(L)<3:
 			self.caught_err.configure(text="")
@@ -2771,7 +2864,7 @@ class LaserConnect:
 		else:
 			#If there are more than 2 lasers connected to the computer, user has to choose 2 from the list.
 
-			self.err.configure(text="More than two devices \n have been detected. \n Please choose up to 2 \n to connect.")
+			self.caught_err.configure(text="More than two devices \n have been detected. \n Please choose up to 2 \n to connect.")
 			self.con_button.configure(state="disabled")
 
 			self.lab0=Label(self.parent,text="Choose lasers:",font="Arial 10 bold")

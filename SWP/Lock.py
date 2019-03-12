@@ -52,6 +52,7 @@ class Lock:
 		This parameter can be negative or bigeer than 1. 
 		"""
 		self.slave_Rs=[0]*len(wvls)
+		self.slave_sectors=[0]*len(wvls)
 
 		#Control (feedback) signals
 		self.master_ctrl=0
@@ -122,6 +123,7 @@ class Lock:
 				self._def_slave_freqs[i]=c/wavelengths[i]
 		self.update_slave_FSRs()
 
+	
 	"""
 	To obtain slave laser's FSR one has to multiply cavity's FSR (defined at the master laser frequency)
 	by the ratio of frequencies, i.e.:
@@ -142,10 +144,13 @@ class Lock:
 
 	#User provides deviation in MHz, which has to be translated into units of R using slave laser's FSR
 	def set_laser_lockpoint(self,deviation,ind):
-		if deviation>self._FSR*1000/2:
-			deviation-=self._FSR*1000
-		elif deviation<-self._FSR*1000/2:
-			deviation+=self._FSR*1000
+		x=1000*self._FSR/2
+		if deviation>x:
+			self.slave_sectors[ind]=math.ceil((deviation-x)/(2*x))
+			deviation-=self.slave_sectors[ind]*2*x
+		elif deviation<-x:
+			self.slave_sectors[ind]=-math.ceil((-deviation-x)/(2*x))
+			deviation-=self.slave_sectors[ind]*2*x
 		self.slave_lockpoints[ind]=self.zero_slave_lockpoints[ind]+deviation/(1000*self._slave_FSR[ind]) 
 
 
@@ -154,11 +159,15 @@ class Lock:
 		if new_fr>self._FSR*1000/2:
 			new_fr-=self._FSR*1000
 			self.slave_lockpoints[ind]=self.zero_slave_lockpoints[ind]+new_fr/(1000*self._slave_FSR[ind]) 
+			self.slave_sectors[ind]+=1
+
 		elif new_fr<-self._FSR*1000/2:
 			new_fr+=self._FSR*1000
-			self.slave_lockpoints[ind]=self.zero_slave_lockpoints[ind]+new_fr/(1000*self._slave_FSR[ind]) 
+			self.slave_lockpoints[ind]=self.zero_slave_lockpoints[ind]+new_fr/(1000*self._slave_FSR[ind])
+			self.slave_sectors[ind]-=1 
 		else:
 			self.slave_lockpoints[ind]+=deviation/(1000*self._slave_FSR[ind]) #deviation in MHz
+
 
 	"""
 	It is worth mentioning that to translate R unit to MHz, one just has to multiply the deviation from the 
@@ -174,8 +183,16 @@ class Lock:
 		return (self.slave_lockpoints[ind]-self.zero_slave_lockpoints[ind])*self._slave_FSR[ind]*1000
 
 
+	def get_laser_abs_lockpoint(self,ind):
+		return self.slave_sectors[ind]*self._FSR*1000+(self.slave_lockpoints[ind]-self.zero_slave_lockpoints[ind])*self._slave_FSR[ind]*1000
+
+
 	def get_laser_local_freq(self,ind):
 		return (self.slave_Rs[ind]-self.zero_slave_lockpoints[ind])*self._slave_FSR[ind]*1000
+
+
+	def get_laser_abs_freq(self,ind):
+		return self.slave_sectors[ind]*self._FSR*1000+(self.slave_Rs[ind]-self.zero_slave_lockpoints[ind])*self._slave_FSR[ind]*1000
 
 	
 	def adjust_gains(self,prop,integral):

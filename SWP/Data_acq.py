@@ -71,10 +71,14 @@ class TransferLock:
 			self.slave_peak_crits.append(float(cfg['LASER2']['PeakCriterion']))
 
 		#Flags in form of threading.Event (necessary for frequency sweep)
-		self.slave_locked_flags=[Event()]*n
+		self.slave_locked_flags=[Event()]
+		if n>1:
+			self.slave_locked_flags.append(Event())
 
 		#RMS history
-		self.slave_err_history=[deque(maxlen=self._err_data_length)]*n #Kept in MHz instead of r
+		self.slave_err_history=[deque(maxlen=self._err_data_length)]
+		if n>1:
+			self.slave_err_history.append(deque(maxlen=self._err_data_length)) #Kept in MHz instead of r
 
 		#Current RMS (in MHz as well)
 		self.slave_err_rms=[0]*n
@@ -295,7 +299,7 @@ class TransferLock:
 
 					self._lck_adjust_fin.wait()
 
-					GUI_object.rms_cav.config(text="{:.2f}".format(self.master_err_rms))
+					GUI_object.rms_cav.config(text="{:.3f}".format(self.master_err_rms))
 					GUI_object.real_scoff.config(text='{:.2f}'.format(self.daq_tasks.ao_scan.offset))
 				else:
 					GUI_object.twopeak_status_cv.itemconfig(GUI_object.twopeak_status,fill="red")
@@ -352,8 +356,8 @@ class TransferLock:
 						if GUI_object.laser_logging_set[j]:
 							GUI_object.slave_time_log[j][self._slave_counters[j]]=time()-GUI_object.lt_start[j]
 							GUI_object.slave_err_log[j][self._slave_counters[j]]=self.slave_err_history[j][-1]
-							GUI_object.slave_rfreq_log[j][self._slave_counters[j]]=GUI_object.lock.get_laser_local_freq(j)
-							GUI_object.slave_lfreq_log[j][self._slave_counters[j]]=GUI_object.lock.get_laser_lockpoint(j)
+							GUI_object.slave_rfreq_log[j][self._slave_counters[j]]=GUI_object.lock.get_laser_abs_freq(j)
+							GUI_object.slave_lfreq_log[j][self._slave_counters[j]]=GUI_object.lock.get_laser_abs_lockpoint(j)
 							GUI_object.slave_rr_log[j][self._slave_counters[j]]=GUI_object.lock.slave_Rs[j]
 							GUI_object.slave_lr_log[j][self._slave_counters[j]]=GUI_object.lock.slave_lockpoints[j]
 
@@ -429,7 +433,7 @@ class Signal:
 		points=[]
 		skip=0
 
-		#We discard ignore first 10% of the data. Real scan introduces terrible noise there.
+		#We discard ignore first 20% of the data. Real scan introduces terrible noise there.
 		for i in range(int(0.2*len(D)),len(D)-win_size):
 
 			if skip>0:

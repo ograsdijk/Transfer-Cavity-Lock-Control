@@ -230,18 +230,23 @@ class DAQ_tasks:
 
 	def simulate_scan(self):
 		peak_m1=(self.ao_scan.mx_voltage/10-self.ao_scan.offset)+self.ao_scan.scan_time/8
-		peak_m2=peak_m1+self.ao_scan.scan_time*3/4
+		peak_m2=peak_m1+self.ao_scan.scan_time*0.5
 
 		peak_s1=self.ao_laser.voltages[0]/5*self.ao_scan.scan_time
+		peak_s12p=peak_s1+(peak_m2-peak_m1)*1000/784.5
+		peak_s12m=peak_s1-(peak_m2-peak_m1)*1000/784.5
 		
 		M=generate_data([0.01,0.01],[peak_m1,peak_m2],[2/self.ao_scan.n_samples*self.ao_scan.scan_time,2/self.ao_scan.n_samples*self.ao_scan.scan_time],self.ao_scan.n_samples,0,self.ao_scan.scan_time)
 		M=add_noise(M,0.002)
-		S1=generate_data([0.002],[peak_s1],[1/self.ao_scan.n_samples*self.ao_scan.scan_time],self.ao_scan.n_samples,0,self.ao_scan.scan_time)
+		
+		S1=generate_data([0.002,0.002,0.002],[peak_s1,peak_s12p,peak_s12m],[1/self.ao_scan.n_samples*self.ao_scan.scan_time,1/self.ao_scan.n_samples*self.ao_scan.scan_time,1/self.ao_scan.n_samples*self.ao_scan.scan_time],self.ao_scan.n_samples,0,self.ao_scan.scan_time)
 		S1=add_noise(S1,0.001)
 
 		if self.ao_laser._channel_no>1:
 			peak_s2=self.ao_laser.voltages[1]/5*self.ao_scan.scan_time
-			S2=generate_data([0.002],[lck.peak_s2],[1/self.ao_scan.n_samples*self.ao_scan.scan_time],self.ao_scan.n_samples,0,self.ao_scan.scan_time)
+			peak_s22p=peak_s2+(peak_m2-peak_m1)*1000/784.5
+			peak_s22m=peak_s2-(peak_m2-peak_m1)*1000/784.5
+			S2=generate_data([0.002,0.002,0.002],[peak_s2,peak_s22p,peak_s22m],[1/self.ao_scan.n_samples*self.ao_scan.scan_time,1/self.ao_scan.n_samples*self.ao_scan.scan_time,1/self.ao_scan.n_samples*self.ao_scan.scan_time],self.ao_scan.n_samples,0,self.ao_scan.scan_time)
 			S2=add_noise(S2,0.0015)
 		
 			return [M,S1,S2]
