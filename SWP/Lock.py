@@ -40,6 +40,8 @@ class Lock:
 		self.slave_errs=[0]*len(wvls)
 		self.slave_errs_prev=[0]*len(wvls)
 
+		self._wrong_peak_counter=[0,0]
+
 		"""
 		Slave lasers' R parameters. They are defined as the ratio of the interval between the difference of 
 		positions of peaks of the slave and master lasers and two peaks of the master laser. In other words,
@@ -61,6 +63,7 @@ class Lock:
 		#Peak positions
 		self.master_peaks=[]
 		self.slave_peaks=[0]*len(wvls)
+		self.prev_slave_peaks=[0]*len(wvls)
 
 		#Gains. This program uses PI loops. 
 		self.prop_gain=[float(cfg['CAVITY']['PGain']),float(cfg['LASER1']['PGain'])]
@@ -73,8 +76,9 @@ class Lock:
 		#Interval between master peaks (t2-t1) 
 		self.interval=0 #ms
 
-		#Frequency of slave lasers that are used to calculate adjusted FSRs. Doesn't have to be precise.
+		#Frequency of slave lasers that are used to calculate adjusted FSRs. Doesn't have to be too precise.
 		self.slave_freqs=[0]*len(wvls)
+
 
 		#Initially chosen frequencies
 		self._def_slave_freqs=[0]*len(wvls)
@@ -151,6 +155,8 @@ class Lock:
 		elif deviation<-x:
 			self.slave_sectors[ind]=-math.ceil((-deviation-x)/(2*x))
 			deviation-=self.slave_sectors[ind]*2*x
+		else:
+			self.slave_sectors[ind]=0
 		self.slave_lockpoints[ind]=self.zero_slave_lockpoints[ind]+deviation/(1000*self._slave_FSR[ind]) 
 
 
@@ -224,13 +230,15 @@ class Lock:
 			#We also calculate the interval between the peaks.
 			self.interval=(signal.peaks_x[-1]-signal.peaks_x[0])
 
-		return self.master_err
+		return self.master_err/self.interval*self._FSR*1000
 	
 
 	#Analogical function to the previous one. It uses the first detected peak of the slave laser. It returns the error in units of MHz.
 	def acquire_slave_signal(self,signal,ind):
 		if len(signal.peaks_x)>0:
 			self.slave_errs_prev[ind]=self.slave_errs[ind]
+			self.prev_slave_peaks[ind]=self.slave_peaks[ind]
+
 			self.slave_peaks[ind]=signal.peaks_x[0]
 
 			#Current R parameter of the slave laser is calculated.
@@ -247,7 +255,16 @@ class Lock:
 						self.slave_errs[ind]=err
 						self.slave_peaks[ind]=peak
 						self.slave_Rs[ind]=self.slave_lockpoints[ind]-err
-					
+
+			if abs(self.slave_errs[ind]-self.slave_errs_prev[ind])*1000*self._slave_FSR[ind]>=0.9*1000*self._FSR and self._wrong_peak_counter[ind]<3:
+				self.slave_errs[ind]=self.slave_errs_prev[ind]
+				self.slave_peaks[ind]=self.prev_slave_peaks[ind]
+				self.slave_Rs[ind]=(self.master_peaks[0]-self.slave_peaks[ind])/(self.master_peaks[0]-self.master_peaks[1])
+				self._wrong_peak_counter[ind]+=1
+			else:
+				self._wrong_peak_counter[ind]=0
+			
+
 			return self.slave_errs[ind]*1000*self._slave_FSR[ind]
 		else:
 			return 0

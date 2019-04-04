@@ -8,7 +8,7 @@ from time import sleep
 
 from .DAQ_tasks import *
 from .Lock import *
-
+from .Themes import Colors
 
 """
 This file contains the class that represents the transfer lock and two helper classes. The main class ("TransferLock")
@@ -51,8 +51,9 @@ class TransferLock:
 		self.master_lock_engaged=False
 		self.master_locked_flag=False
 
-		#Error signal histor is contained in the queue
+		#Error signal history is contained in the queue (kept in MHz)
 		self.master_err_history=deque(maxlen=self._err_data_length)
+		self.master_err_history.append(0)
 
 		#Current RMS of the error signal
 		self.master_err_rms=0
@@ -79,6 +80,9 @@ class TransferLock:
 		self.slave_err_history=[deque(maxlen=self._err_data_length)]
 		if n>1:
 			self.slave_err_history.append(deque(maxlen=self._err_data_length)) #Kept in MHz instead of r
+
+		for i in range(n):
+			self.slave_err_history[i].append(0)
 
 		#Current RMS (in MHz as well)
 		self.slave_err_rms=[0]*n
@@ -293,7 +297,7 @@ class TransferLock:
 
 				if len(self.master_signal.peaks_x)==2:
 
-					GUI_object.twopeak_status_cv.itemconfig(GUI_object.twopeak_status,fill="#05FF2B")
+					GUI_object.twopeak_status_cv.itemconfig(GUI_object.twopeak_status,fill=Colors['on_color'])
 
 					self.lock_master()
 
@@ -302,11 +306,11 @@ class TransferLock:
 					GUI_object.rms_cav.config(text="{:.3f}".format(self.master_err_rms))
 					GUI_object.real_scoff.config(text='{:.2f}'.format(self.daq_tasks.ao_scan.offset))
 				else:
-					GUI_object.twopeak_status_cv.itemconfig(GUI_object.twopeak_status,fill="red")
+					GUI_object.twopeak_status_cv.itemconfig(GUI_object.twopeak_status,fill=Colors['off_color'])
 					
 				if self.master_locked_flag:
 
-					GUI_object.cav_lock_status_cv.itemconfig(GUI_object.cav_lock_status,fill="#05FF2B")
+					GUI_object.cav_lock_status_cv.itemconfig(GUI_object.cav_lock_status,fill=Colors['on_color'])
 
 					if any(self.slave_locks_engaged):
 						for i in range(len(self.slave_locks_engaged)):
@@ -320,11 +324,11 @@ class TransferLock:
 								GUI_object.laser_r[i].config(text='{:.3f}'.format(GUI_object.lock.slave_Rs[i]))
 
 								if self.slave_locked_flags[i].is_set():
-									GUI_object.laser_lock_status_cv[i].itemconfig(GUI_object.laser_lock_status[i],fill="#05FF2B")
+									GUI_object.laser_lock_status_cv[i].itemconfig(GUI_object.laser_lock_status[i],fill=Colors['on_color'])
 								else:
-									GUI_object.laser_lock_status_cv[i].itemconfig(GUI_object.laser_lock_status[i],fill="red")
+									GUI_object.laser_lock_status_cv[i].itemconfig(GUI_object.laser_lock_status[i],fill=Colors['off_color'])
 				else:
-					GUI_object.cav_lock_status_cv.itemconfig(GUI_object.cav_lock_status,fill="red")
+					GUI_object.cav_lock_status_cv.itemconfig(GUI_object.cav_lock_status,fill=Colors['off_color'])
 
 			
 			if self.master_lock_engaged and len(self.master_signal.peaks_x)==2:
@@ -335,14 +339,23 @@ class TransferLock:
 				GUI_object.plot_win.ax_err.set_xlim(min(X), max(X))
 
 				if GUI_object.master_logging_set:
-					GUI_object.master_time_log[self._master_counter]=time()-GUI_object.mt_start
-					GUI_object.master_error_log[self._master_counter]=GUI_object.lock.master_err
+
+					i_temp=self._master_counter%10000
+
+					GUI_object.master_time_temp[i_temp]=time()-GUI_object.mt_start
+					GUI_object.master_error_temp[i_temp]=GUI_object.lock.master_err
 
 					self._master_counter+=1
 
-					if self._master_counter+1>GUI_object.master_error_log.shape[0]:
-						self.master_error_log.resize(GUI_object.master_error_log.shape[0]+10**6)
-						self.master_time_log.resize(GUI_object.master_error_log.shape[0]+10**6)
+					if self._master_counter%10000==0:
+
+						GUI_object.master_error_log[self._master_counter-10000:self._master_counter]=GUI_object.master_error_temp
+						GUI_object.master_time_log[self._master_counter-10000:self._master_counter]=GUI_object.master_time_temp
+
+						GUI_object.master_f.flush()
+
+						self.master_error_log.resize((GUI_object.master_error_log.shape[0]+10**4,))
+						self.master_time_log.resize((GUI_object.master_time_log.shape[0]+10**4,))
 
 				for j in range(len(self.slave_locks_engaged)):
 					if self.slave_locks_engaged[j]:
@@ -354,22 +367,44 @@ class TransferLock:
 
 
 						if GUI_object.laser_logging_set[j]:
-							GUI_object.slave_time_log[j][self._slave_counters[j]]=time()-GUI_object.lt_start[j]
-							GUI_object.slave_err_log[j][self._slave_counters[j]]=self.slave_err_history[j][-1]
-							GUI_object.slave_rfreq_log[j][self._slave_counters[j]]=GUI_object.lock.get_laser_abs_freq(j)
-							GUI_object.slave_lfreq_log[j][self._slave_counters[j]]=GUI_object.lock.get_laser_abs_lockpoint(j)
-							GUI_object.slave_rr_log[j][self._slave_counters[j]]=GUI_object.lock.slave_Rs[j]
-							GUI_object.slave_lr_log[j][self._slave_counters[j]]=GUI_object.lock.slave_lockpoints[j]
+
+							x_temp=self._slave_counters[j]%10000
+
+
+							GUI_object.slave_time_temp[j][x_temp]=time()-GUI_object.lt_start[j]
+							GUI_object.slave_err_temp[j][x_temp]=self.slave_err_history[j][-1]
+							GUI_object.slave_rfreq_temp[j][x_temp]=GUI_object.lock.get_laser_abs_freq(j)
+							GUI_object.slave_lfreq_temp[j][x_temp]=GUI_object.lock.get_laser_abs_lockpoint(j)
+							GUI_object.slave_rr_temp[j][x_temp]=GUI_object.lock.slave_Rs[j]
+							GUI_object.slave_lr_temp[j][x_temp]=GUI_object.lock.slave_lockpoints[j]
+							GUI_object.slave_pow_temp[j][x_temp]=self.daq_tasks.power_PDs.power[j][0]
+							GUI_object.slave_wvmfreq_temp[j][x_temp]=GUI_object.real_frequency[j][0]
+
+							print(GUI_object.real_frequency[j][0])
 
 							self._slave_counters[j]+=1
 
-							if self._slave_counters[j]+1>GUI_object.slave_err_log[j].shape[0]:
-								GUI_object.slave_time_log[j].resize(GUI_object.slave_err_log[j].shape[0]+10**6)
-								GUI_object.slave_err_log[j].resize(GUI_object.slave_err_log[j].shape[0]+10**6)
-								GUI_object.slave_rfreq_log[j].resize(GUI_object.slave_err_log[j].shape[0]+10**6)
-								GUI_object.slave_lfreq_log[j].resize(GUI_object.slave_err_log[j].shape[0]+10**6)
-								GUI_object.slave_rr_log[j].resize(GUI_object.slave_err_log[j].shape[0]+10**6)
-								GUI_object.slave_lr_log[j].resize(GUI_object.slave_err_log[j].shape[0]+10**6)
+							if self._slave_counters[j]%10000==0:
+
+								GUI_object.slave_time_log[j][self._slave_counters[j]-10000:self._slave_counters[j]]=GUI_object.slave_time_temp[j]
+								GUI_object.slave_err_log[j][self._slave_counters[j]-10000:self._slave_counters[j]]=GUI_object.slave_err_temp[j]
+								GUI_object.slave_rfreq_log[j][self._slave_counters[j]-10000:self._slave_counters[j]]=GUI_object.slave_rfreq_temp[j]
+								GUI_object.slave_lfreq_log[j][self._slave_counters[j]-10000:self._slave_counters[j]]=GUI_object.slave_lfreq_temp[j]
+								GUI_object.slave_rr_log[j][self._slave_counters[j]-10000:self._slave_counters[j]]=GUI_object.slave_rr_temp[j]
+								GUI_object.slave_lr_log[j][self._slave_counters[j]-10000:self._slave_counters[j]]=GUI_object.slave_lr_temp[j]
+								GUI_object.slave_pow_log[j][self._slave_counters[j]-10000:self._slave_counters[j]]=GUI_object.slave_pow_temp[j]
+								GUI_object.slave_wvmfreq_log[j][self._slave_counters[j]-10000:self._slave_counters[j]]=GUI_object.slave_wvmfreq_temp[j]
+
+								GUI_object.log_las_file[j].flush()
+
+								GUI_object.slave_time_log[j].resize((GUI_object.slave_time_log[j].shape[0]+10**4,))
+								GUI_object.slave_err_log[j].resize((GUI_object.slave_err_log[j].shape[0]+10**4,))
+								GUI_object.slave_rfreq_log[j].resize((GUI_object.slave_rfreq_log[j].shape[0]+10**4,))
+								GUI_object.slave_lfreq_log[j].resize((GUI_object.slave_lfreq_log[j].shape[0]+10**4,))
+								GUI_object.slave_rr_log[j].resize((GUI_object.slave_rr_log[j].shape[0]+10**4,))
+								GUI_object.slave_lr_log[j].resize((GUI_object.slave_lr_log[j].shape[0]+10**4,))
+								GUI_object.slave_pow_log[j].resize((GUI_object.slave_pow_log[j].shape[0]+10**4,))
+								GUI_object.slave_wvmfreq_log[j].resize((GUI_object.slave_wvmfreq_log[j].shape[0]+10**4,))
 
 
 			self._counter+=1
@@ -400,7 +435,8 @@ class Signal:
 		self.data_y=datay
 		self.dx=datax[1]-datax[0]
 		self.mx=np.max(datay)
-		self.smooth_y=fltr.apply(datay,0,datax[1]-datax[0])
+		# self.smooth_y=fltr.apply(datay,0,datax[1]-datax[0])
+		self.smooth_y=fltr.peak_filter(datay)
 		self.fltr=fltr
 		self.der_y=[]
 		self.smooth_der=[]
@@ -426,14 +462,14 @@ class Signal:
 
 		D=self.fltr.apply(self.smooth_y,1,self.dx)
 		self.der_y=D
-		D=self.fltr.apply(D,0,self.dx)
+		# D=self.fltr.apply(D,0,self.dx)
 		# D=self.fltr.moving_avg(D,half_size=hs)
 		self.smooth_der=D
 
 		points=[]
 		skip=0
 
-		#We discard ignore first 20% of the data. Real scan introduces terrible noise there.
+		#We discard/ignore first 20% of the data. Real scan introduces terrible noise there.
 		for i in range(int(0.2*len(D)),len(D)-win_size):
 
 			if skip>0:
@@ -489,3 +525,7 @@ class Filter:
 	def moving_avg(self,data,half_size=2):
 
 		return np.divide(np.convolve(data,np.ones(2*half_size+1),"same"),2*half_size+1)
+
+
+	def peak_filter(self,data,k=10):
+		return np.concatenate((np.concatenate((data[:k],[data[i]**2-data[i-k]*data[i+k] for i in range(k,len(data)-k)])),data[-k:]))

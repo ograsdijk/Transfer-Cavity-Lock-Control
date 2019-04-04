@@ -9,10 +9,11 @@ def load_conf(filename):
 	config.read(filename)
 	return config
 
-def save_conf(filename,daq_dict,cav_dict,las1_dict,las2_dict=None):
+def save_conf(filename,daq_dict,wvm_dict,cav_dict,las1_dict,las2_dict=None):
 	config=configparser.ConfigParser()
 	config.optionxform = str
 	config['DAQ']=daq_dict
+	config['WAVEMETER']=wvm_dict
 	config['CAVITY']=cav_dict
 	config['LASER1']=las1_dict
 	if las2_dict is not None:

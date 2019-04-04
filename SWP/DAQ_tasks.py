@@ -2,6 +2,7 @@ import nidaqmx as dq
 import matplotlib.pyplot as plt
 import numpy as np
 import math
+from collections import deque
 import random
 
 
@@ -35,6 +36,7 @@ class DAQ_tasks:
 		self.ao_scan=0
 		self.ao_laser=0
 		self.ai_PDs=0
+		self.power_PDs=0
 		self.time_samples=[]
 		self.PD_data=[]
 		self.simulation=simulate
@@ -53,6 +55,8 @@ class DAQ_tasks:
 		self.ao_laser.dq_task=0
 		self.ai_PDs.dq_task.close()
 		self.ai_PDs.dq_task=0
+		self.power_PDs.dq_task.close()
+		self.power_PDs.dq_task=0
 
 	
 	"""
@@ -68,20 +72,23 @@ class DAQ_tasks:
 		self.ao_laser.dq_task=dq.Task(new_task_name="Lasers")
 		self.ao_laser._channel_no=0
 
+		self.power_PDs.dq_task=dq.Task(new_task_name="Power")
+		self.power_PDs._channel_no=0
+
 		self.ai_PDs.dq_task=dq.Task(new_task_name="PDs")
 		self.ai_PDs.dq_task.ai_channels.add_ai_voltage_chan(self.device.name+"/ai"+cfg['CAVITY']['InputChannel'])
 		self.ai_PDs._channel_no=1
 
-		self.add_laser(int(cfg['LASER1']['InputChannel']),int(cfg['LASER1']['OutputChannel']))
+		self.add_laser(int(cfg['LASER1']['InputChannel']),int(cfg['LASER1']['OutputChannel']),int(cfg['LASER1']['PowerChannel']))
 		if n>1:
-			self.add_laser(int(cfg['LASER2']['InputChannel']),int(cfg['LASER2']['OutputChannel']))
+			self.add_laser(int(cfg['LASER2']['InputChannel']),int(cfg['LASER2']['OutputChannel']),int(cfg['LASER2']['PowerChannel']))
 
 		#Timing (synchronisation) has to be set every time we recreate a task.
 		self.set_input_timing()
 	
 
 	#Function similar to the previous one. This one is invoked when user changes at least one channel.
-	def update_tasks(self,ao_channels,ai_channels):
+	def update_tasks(self,ao_channels,ai_channels,power_channels):
 		self._clear_tasks()
 
 		self.ao_scan.dq_task=dq.Task(new_task_name="Scan")
@@ -94,6 +101,10 @@ class DAQ_tasks:
 		self.ai_PDs.dq_task=dq.Task(new_task_name="PDs")
 		for ch in ai_channels:
 			self.ai_PDs.dq_task.ai_channels.add_ai_voltage_chan(ch)
+
+		self.power_PDs.dq_task=dq.Task(new_task_name="Power")
+		for ch in power_channels:
+			self.power_PDs.dq_task.ai_channels.add_ai_voltage_chan(ch)
 
 		self.set_input_timing()
 
@@ -116,6 +127,9 @@ class DAQ_tasks:
 
 	def get_laser_ai_channel(self,ind):
 		return self.ai_PDs.dq_task.channel_names[ind+1]
+
+	def get_laser_power_channel(self,ind):
+		return self.power_PDs.dq_task.channel_names[ind]
 
 	def get_all_used_ai_channels(self):
 		return self.ai_PDs.dq_task.channel_names
@@ -182,10 +196,16 @@ class DAQ_tasks:
 		self.ai_PDs=PD_task(self.device,name,scan_channel)
 
 
+	#Creating an object of power_PD_task class.
+	def set_power_task(self,name):
+		self.power_PDs=Power_PD_task(self.device,name)
+
+
 	#Method adding a laser. It adds channels to L_task tasks and to PD_task tasks. 
-	def add_laser(self,in_channel,out_channel):
+	def add_laser(self,in_channel,out_channel,power_channel):
 		self.ao_laser.add_laser(out_channel)
 		self.ai_PDs.add_laser(in_channel)
+		self.power_PDs.add_laser(power_channel)
 
 
 	"""
@@ -221,11 +241,20 @@ class DAQ_tasks:
 		self.ao_scan.dq_task.stop()
 		self.ai_PDs.dq_task.stop()
 
+		self.get_power()
+
 		if self.simulation:
 			self.PD_data=self.simulate_scan()
 
 		#Flag is set
 		evnt.set()
+
+
+	def get_power(self):
+
+		self.power_PDs.start()
+		self.power_PDs.acquire_data(self.simulation)
+		self.power_PDs.stop()
 
 
 	def simulate_scan(self):
@@ -481,6 +510,55 @@ class PD_task:
 #################################################################################################################
 
 
+
+"""
+Class that takes care of reading data from photodetectors through the DAQ to measure power of the doubled laser. 
+It initializes by creating a DAQ Task and by adding channel for the first science laser.
+"""
+class Power_PD_task:
+
+	def __init__(self,dev,name):
+		self.dq_task=dq.Task(new_task_name=name)
+		self.device=dev
+		self.acq_data=[]
+		self.power=[]
+		self.n_samples=10
+
+		#Eventually equal to number of slave lasers.
+		self._channel_no=0
+
+
+	#Starting the task. Reading data is usually not started automatically.
+	def start(self):
+		self.dq_task.start()
+
+
+	def stop(self):
+		self.dq_task.stop()
+
+
+	#Adds an analog input channel connected to the photodetector that is associated with one of the slave lasers.
+	def add_laser(self,channel):
+		self.dq_task.ai_channels.add_ai_voltage_chan(self.device.name+"/ai"+str(channel))
+		self._channel_no+=1
+		self.power.append(deque(maxlen=1))
+
+
+	#Method that actually acquires the data. The resulting array is (_channel_no x n_samples) (so n_samples per photodetctor).
+	def acquire_data(self,sim):
+		self.acq_data=self.dq_task.read(number_of_samples_per_channel=self.n_samples)	
+		if sim:
+			self.acq_data=[[242+random.random() for i in range(self.n_samples)] for j in range(self._channel_no)]
+
+		for i in range(self._channel_no):
+			self.power[i].append(math.sqrt(sum([x**2 for x in self.acq_data[i]])/self.n_samples))
+		
+
+
+
+#################################################################################################################
+
+
 """
 The global function is defined to simply setup tasks using information from the config file. This function is run inside the GUI initialization
 when a TransferLock obejct is initialized. This method simply creates a DAQ_tasks object, adds references to Scan, L_task and PD_task objects,
@@ -496,10 +574,11 @@ def setup_tasks(cfg,n,simulate):
 	tq.set_scan_task("Scan",channel=int(cfg['CAVITY']['OutputChannel']))
 	tq.set_laser_task("Lasers")
 	tq.set_PD_task("PDs",scan_channel=int(cfg['CAVITY']['InputChannel']))
+	tq.set_power_task("Power")
 	tq.setup_scanning(float(cfg['CAVITY']['MinVoltage']),float(cfg['CAVITY']['MaxVoltage']),float(cfg['CAVITY']['ScanOffset']),float(cfg['CAVITY']['ScanAmplitude']),int(cfg['CAVITY']['ScanSamples']),int(cfg['CAVITY']['ScanTime'])) 
-	tq.add_laser(int(cfg['LASER1']['InputChannel']),int(cfg['LASER1']['OutputChannel']))
+	tq.add_laser(int(cfg['LASER1']['InputChannel']),int(cfg['LASER1']['OutputChannel']),int(cfg['LASER1']['PowerChannel']))
 	if n>1:
-		tq.add_laser(int(cfg['LASER2']['InputChannel']),int(cfg['LASER2']['OutputChannel']))
+		tq.add_laser(int(cfg['LASER2']['InputChannel']),int(cfg['LASER2']['OutputChannel']),int(cfg['LASER2']['PowerChannel']))
 		tq.set_laser_voltage_boundaries([float(cfg['LASER1']['MinVoltage']),float(cfg['LASER2']['MinVoltage'])],[float(cfg['LASER1']['MaxVoltage']),float(cfg['LASER2']['MaxVoltage'])])
 		tq.set_laser_volts([float(cfg['LASER1']['SetVoltage']),float(cfg['LASER2']['SetVoltage'])])
 	else:
@@ -507,6 +586,8 @@ def setup_tasks(cfg,n,simulate):
 		tq.set_laser_volts([float(cfg['LASER1']['SetVoltage'])])
 	
 	tq.set_input_timing()
+
+
 
 	return tq
 
