@@ -156,8 +156,9 @@ class LaserControl:
 
 		if laser.is_on():
 			laser.emission_off()
+			
+		self._is_on=False
 
-		
 		self.parent=parent   #Parent window (panes)
 		self.status=stat     #Some GUI elements in different pane
 		self.laser=laser     #Laser objects
@@ -480,15 +481,22 @@ class LaserControl:
 			temperature=res[3]
 
 
-
-			self.lam.configure(text="{0:.4f}".format(wavelength)+" nm")
-			if power>1:
-				self.status[2].configure(text="{0:.2f}".format(wavelength)+" nm")
-			self.freq.configure(text="{0:.5f}".format(frequency)+" THz")
-			self.lamu.configure(text="{0:.5f}".format(wavelength/4)+" nm")
-			self.frequ.configure(text="{0:.5f}".format(frequency*4)+" THz")
-			self.pow.configure(text="{0:.2f}".format(power)+" mW")
-			self.temp.configure(text="{0:.2f}".format(temperature)+" C")
+			if wavelength>1:
+				self.lam.configure(text="{0:.4f}".format(wavelength)+" nm")
+				self.lamu.configure(text="{0:.5f}".format(wavelength/4)+" nm")
+				if self._is_on:
+					self.status[2].configure(text="{0:.2f}".format(wavelength)+" nm")
+			if frequency<10**5:
+				self.freq.configure(text="{0:.5f}".format(frequency)+" THz")
+				self.frequ.configure(text="{0:.5f}".format(frequency*4)+" THz")
+			if self._is_on and power>1:
+				self.pow.configure(text="{0:.2f}".format(power)+" mW")
+			elif not self._is_on:
+				self.pow.configure(text="{0:.2f}".format(power)+" mW")
+			else:
+				pass
+			if temperature>1:
+				self.temp.configure(text="{0:.2f}".format(temperature)+" C")
 
 			self.parent.after(200,self.update_labels)
 
@@ -588,7 +596,7 @@ class LaserControl:
 
 		self.command_queue.put([self.laser.emission_on])
 		
-	
+		
 		cv=self.status[0]
 		ov=self.status[1]
 		wv=self.status[2]
@@ -596,6 +604,7 @@ class LaserControl:
 		wvl=self.laser.get_wavelength()
 		wv.configure(text="{0:.2f}".format(wvl)+" nm")
 		self.emission_on_button.configure(text="Emission on",fg=on_color,command=self.turn_off,relief=SUNKEN)
+		self._is_on=True
 		
 
 	def turn_off(self,event=None):
@@ -611,7 +620,7 @@ class LaserControl:
 		cv.itemconfig(ov,fill=off_color)
 		wv.configure(text="")
 		self.emission_on_button.configure(text="Emission off",fg=off_color,command=self.turn_on,relief=RAISED)
-
+		self._is_on=False
 
 
 
@@ -1036,8 +1045,10 @@ class TransferCavity:
 		self.laslog_filenames=[None,None]
 
 		self.real_frequency=[deque(maxlen=1)]
+		self.real_frequency[0].append(0)
 		if len(self.lasers)>1:
 			self.real_frequency.append(deque(maxlen=1))
+			self.real_frequency[1].append(0)
 		
 		#We loop over two lasers. One of them might be just greyed out.
 		for i in range(2):			
@@ -1288,8 +1299,8 @@ class TransferCavity:
 
 		self.bottom_frame.grid_columnconfigure(0,minsize=10)
 		self.bottom_frame.grid_columnconfigure(2,minsize=10)
-		self.bottom_frame.grid_columnconfigure(3,minsize=180)
-		self.bottom_frame.grid_columnconfigure(4,minsize=220)
+		self.bottom_frame.grid_columnconfigure(3,minsize=150)
+		self.bottom_frame.grid_columnconfigure(4,minsize=250)
 		self.bottom_frame.grid_columnconfigure(5,minsize=10)
 		self.bottom_frame.grid_columnconfigure(6,minsize=100)
 		self.bottom_frame.grid_columnconfigure(7,minsize=10)
@@ -2874,8 +2885,10 @@ class TransferCavity:
 		try:
 			sdc=SocketClientBristol671A.SocketClientBristol671A(self.host_ip,self.wvm_port) 
 			f=sdc.ReadValue()
+
 			if not isinstance(f, list):
-				raise Exception('Server at provided IP did not return a list.')
+				if not isinstance(f,dict):
+					raise Exception('Server at provided IP returned wrong format.')
 			else:
 				if not isinstance(f[1],dict):
 					raise Exception('Server at provided IP did not return a dictionary inside the list.')
@@ -2902,12 +2915,17 @@ class TransferCavity:
 
 			try:
 				f_dict=sdc.ReadValue()
+				if not isinstance(f_dict,dict):
+					f_dict=f_dict[1]
 				
 			except Exception as e:
+				self.IP_label.config(text=self.host_ip,fg=off_color)
+				self.port_label.config(text=self.wvm_port,fg=off_color)
 				raise e
 				break
 			else:
-				self.real_frequency[0].append(f_dict[1][self.wvm_L1])
+				self.real_frequency[0].append(f_dict[self.wvm_L1][0])
+
 				wvm1=c/self.real_frequency[0][0]
 				p=self.transfer_lock.daq_tasks.power_PDs.power
 				if p[0]:
@@ -2915,8 +2933,8 @@ class TransferCavity:
 				else:
 					p1=0
 
-				if len(self.lasers)>1:
-					self.real_frequency[1].append(f_dict[1][self.wvm_L1])
+				if len(self.lasers)>1 and len(list(f_dict.keys()))>1:
+					self.real_frequency[1].append(f_dict[self.wvm_L2][0])
 					wvm2=c/self.real_frequency[1][0]
 					if p[1]:
 						p2=p[1][0]
@@ -2928,7 +2946,7 @@ class TransferCavity:
 				self.fr_label1.config(text="{:.6f}".format(self.real_frequency[0][0])+" THz")
 				self.power_label1.config(text="{:.1f}".format(p1)+" mV")
 				
-				if len(self.lasers)>1:
+				if len(self.lasers)>1 and len(list(f_dict.keys()))>1:
 					self.wvl_label2.config(text="{:.5f}".format(wvm2)+" nm")
 					self.fr_label2.config(text="{:.6f}".format(self.real_frequency[1][0])+" THz")
 					self.power_label2.config(text="{:.1f}".format(p2)+" mV")
