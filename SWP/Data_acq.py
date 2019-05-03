@@ -354,16 +354,22 @@ class TransferLock:
 
 						GUI_object.master_f.flush()
 
-						self.master_error_log.resize((GUI_object.master_error_log.shape[0]+10**4,))
-						self.master_time_log.resize((GUI_object.master_time_log.shape[0]+10**4,))
+						GUI_object.master_error_log.resize((GUI_object.master_error_log.shape[0]+10**4,))
+						GUI_object.master_time_log.resize((GUI_object.master_time_log.shape[0]+10**4,))
 
 				for j in range(len(self.slave_locks_engaged)):
 					if self.slave_locks_engaged[j]:
 
 						Xs=np.linspace(0,len(self.slave_err_history[j])-1,len(self.slave_err_history[j]))
 						GUI_object.plot_win.slines[j].set_data(Xs,self.slave_err_history[j])
-						GUI_object.plot_win.ax_err_L[j].set_ylim(min(self.slave_err_history[j])-self.slave_rms_crits[j]/3, self.slave_rms_crits[j]/3+max(self.slave_err_history[j]))
-						GUI_object.plot_win.ax_err_L[j].set_xlim(min(Xs), max(Xs))
+						try:
+							GUI_object.plot_win.ax_err_L[j].set_ylim(min(self.slave_err_history[j])-self.slave_rms_crits[j]/3, self.slave_rms_crits[j]/3+max(self.slave_err_history[j]))
+						except:
+							pass
+						try:
+							GUI_object.plot_win.ax_err_L[j].set_xlim(min(Xs), max(Xs))
+						except:
+							pass
 
 
 						if GUI_object.laser_logging_set[j]:
@@ -377,10 +383,10 @@ class TransferLock:
 							GUI_object.slave_lfreq_temp[j][x_temp]=GUI_object.lock.get_laser_abs_lockpoint(j)
 							GUI_object.slave_rr_temp[j][x_temp]=GUI_object.lock.slave_Rs[j]
 							GUI_object.slave_lr_temp[j][x_temp]=GUI_object.lock.slave_lockpoints[j]
-							GUI_object.slave_pow_temp[j][x_temp]=self.daq_tasks.power_PDs.power[j][0]
+							GUI_object.slave_pow_temp[j][x_temp]=1000*np.mean(self.daq_tasks.power_PDs.power[j])
 							GUI_object.slave_wvmfreq_temp[j][x_temp]=GUI_object.real_frequency[j][0]
 
-							print(GUI_object.real_frequency[j][0])
+							# print(GUI_object.real_frequency[j][0])
 
 							self._slave_counters[j]+=1
 

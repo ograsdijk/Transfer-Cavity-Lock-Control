@@ -104,6 +104,11 @@ class GUI:
 		logging.shutdown()
 
 		try:
+			self.ld.TC.stop_scanning()
+		except:
+			pass
+
+		try:
 			self.ld.TC.wavemeter_updates=False
 		except:
 			pass
@@ -113,16 +118,11 @@ class GUI:
 		except:
 			pass
 
-		try:
-			self.ld.TC.stop_scanning()
-		except:
-			pass	
-
-		
+			
 		if len(self.ld.laser_tabs)>0:
 			for obj in self.ld.laser_tabs:
-				if obj.laser.is_on():
-					obj.laser.emission_off()
+				# if obj.laser.is_on():
+				# 	obj.laser.emission_off()
 				clr=closePorts(obj.laser.port)
 		self.root.destroy()
 		import sys
@@ -154,14 +154,23 @@ class LaserControl:
 
 		self.c=299792.458 
 
-		if laser.is_on():
-			laser.emission_off()
-			
-		self._is_on=False
-
 		self.parent=parent   #Parent window (panes)
 		self.status=stat     #Some GUI elements in different pane
 		self.laser=laser     #Laser objects
+
+		if laser.is_on():
+			# laser.emission_off()
+			self._is_on=True	
+			cv=self.status[0]
+			ov=self.status[1]
+			wv=self.status[2]
+			cv.itemconfig(ov,fill=on_color)
+			wvl=self.laser.get_wavelength()
+			wv.configure(text="{0:.2f}".format(wvl)+" nm")
+		else:
+			self._is_on=False
+
+
 
 		parent.grid_rowconfigure(0,minsize=2)
 		parent.grid_rowconfigure(2,minsize=2)
@@ -333,7 +342,10 @@ class LaserControl:
 
 
 		#Buttons for setting wavelength/frequency and turning emission on/off.
-		self.emission_on_button=Button(self.parent,text="Emission off",width=25,command=self.turn_on,font="Arial 10 bold",fg=off_color,bg=button_bg_color,relief=RAISED)
+		if not self._is_on:
+			self.emission_on_button=Button(self.parent,text="Emission off",width=25,command=self.turn_on,font="Arial 10 bold",fg=off_color,bg=button_bg_color,relief=RAISED)
+		else:
+			self.emission_on_button=Button(self.parent,text="Emission on",width=25,command=self.turn_off,font="Arial 10 bold",fg=on_color,bg=button_bg_color,relief=SUNKEN)
 		self.emission_on_button.grid(row=3,column=3,padx=75,sticky=S,pady=40)
 
 		self.set_button=Button(self.parent,text="Set wavelength",width=25,command=self.set_wvl,font="Arial 10 bold",relief=RAISED,bg=button_bg_color,fg=label_fg_color)
@@ -384,9 +396,9 @@ class LaserControl:
 		self.command_thread.start()
 
 
-		if config_wvl is not None:
-			self.new_wv.set(str(config_wvl)) #Wavelength is set if non-default config file was provided.
-			self.set_wvl()
+		# if config_wvl is not None:
+		# 	self.new_wv.set(str(config_wvl)) #Wavelength is set if non-default config file was provided.
+		# 	self.parent.after(500,self.set_wvl())
 
 	"""
 	The following function runs in the command thread (it's the listener). It checks the queue for functions and
@@ -486,7 +498,7 @@ class LaserControl:
 				self.lamu.configure(text="{0:.5f}".format(wavelength/4)+" nm")
 				if self._is_on:
 					self.status[2].configure(text="{0:.2f}".format(wavelength)+" nm")
-			if frequency<10**5:
+			if frequency<10**5 and frequency>0:
 				self.freq.configure(text="{0:.5f}".format(frequency)+" THz")
 				self.frequ.configure(text="{0:.5f}".format(frequency*4)+" THz")
 			if self._is_on and power>1:
@@ -2924,32 +2936,38 @@ class TransferCavity:
 				raise e
 				break
 			else:
-				self.real_frequency[0].append(f_dict[self.wvm_L1][0])
+				self.real_frequency[0].append(f_dict[self.wvm_L1][1])
 
 				wvm1=c/self.real_frequency[0][0]
+				if wvm1<1 or wvm1>100000:
+					wvm1=0
 				p=self.transfer_lock.daq_tasks.power_PDs.power
+				# print(p)
 				if p[0]:
-					p1=p[0][0]
+					p1=1000*np.mean(p[0])
 				else:
 					p1=0
 
 				if len(self.lasers)>1 and len(list(f_dict.keys()))>1:
-					self.real_frequency[1].append(f_dict[self.wvm_L2][0])
+					self.real_frequency[1].append(f_dict[self.wvm_L2][1])
 					wvm2=c/self.real_frequency[1][0]
+					if wvm2<1 or wvm2>100000:
+						wvm2=0
+
 					if p[1]:
-						p2=p[1][0]
+						p2=1000*np.mean(p[1])
 					else:
 						p2=0
 
 
 				self.wvl_label1.config(text="{:.5f}".format(wvm1)+" nm")
 				self.fr_label1.config(text="{:.6f}".format(self.real_frequency[0][0])+" THz")
-				self.power_label1.config(text="{:.1f}".format(p1)+" mV")
+				self.power_label1.config(text="{:.2f}".format(p1)+" mV")
 				
 				if len(self.lasers)>1 and len(list(f_dict.keys()))>1:
 					self.wvl_label2.config(text="{:.5f}".format(wvm2)+" nm")
 					self.fr_label2.config(text="{:.6f}".format(self.real_frequency[1][0])+" THz")
-					self.power_label2.config(text="{:.1f}".format(p2)+" mV")
+					self.power_label2.config(text="{:.2f}".format(p2)+" mV")
 				sleep(0.5)
 
 		self.wavemeter_upd_finished.set()

@@ -541,17 +541,23 @@ class Power_PD_task:
 	def add_laser(self,channel):
 		self.dq_task.ai_channels.add_ai_voltage_chan(self.device.name+"/ai"+str(channel))
 		self._channel_no+=1
-		self.power.append(deque(maxlen=1))
+		self.power.append(deque(maxlen=40))
+		self.power[-1].append(0)
 
 
 	#Method that actually acquires the data. The resulting array is (_channel_no x n_samples) (so n_samples per photodetctor).
 	def acquire_data(self,sim):
-		self.acq_data=self.dq_task.read(number_of_samples_per_channel=self.n_samples)	
+		if self._channel_no>1:
+			self.acq_data=self.dq_task.read(number_of_samples_per_channel=self.n_samples)	
+		else:
+			self.acq_data=[self.dq_task.read(number_of_samples_per_channel=self.n_samples)]
+
 		if sim:
 			self.acq_data=[[242+random.random() for i in range(self.n_samples)] for j in range(self._channel_no)]
 
 		for i in range(self._channel_no):
 			self.power[i].append(math.sqrt(sum([x**2 for x in self.acq_data[i]])/self.n_samples))
+
 		
 
 
