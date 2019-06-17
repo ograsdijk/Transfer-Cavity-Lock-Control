@@ -7,7 +7,6 @@ matplotlib.use("TkAgg")
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.gridspec import GridSpec
 import threading
-import queue
 import datetime
 import h5py
 import logging
@@ -25,7 +24,7 @@ This file contains all GUI classes used in the program. The main class that's fi
 creates the root window. Once the object is initialized, it can be run. It then creates a 4-element paned 
 window: pane 1 is defined by the "LaserConnect" class and contains elements initializing connections with
 the hardware, choosing ports and config files; pane 2 defined by class "LaserControl" containes control for the 
-NKT Laser (1 tab per laser); pane 3 (class "PlotWindow)containes graphs - error for the master and slave lasers
+NKT Laser (1 tab per laser); pane 3 (class "PlotWindow") containes graphs - error for the master and slave lasers
 and the results of cavity scan; pane 4 is created by class "TransferLock" and containes control of the transfer
 cavity and the fine control of laser frequency.
 """
@@ -735,7 +734,7 @@ class TransferCavity:
 
 		#Scanning window. It is later subdivided into scan settings, lock settings and readout frames.
 		self.cavity_window=LabelFrame(parent,text="Fabry-Perot Cavity",bg=bg_color,fg=label_fg_color)
-		self.cavity_window.grid(row=1,column=1)
+		self.cavity_window.grid(row=1,column=1,sticky=W+E)
 
 		self.cavity_window.grid_rowconfigure(0,minsize=5)
 		self.cavity_window.grid_rowconfigure(2,minsize=5)
@@ -953,8 +952,8 @@ class TransferCavity:
 		although if there's only one laser connected, the bottom laser frame will be greyed out.
 		"""
 		self.laser_window=[LabelFrame(parent,text="Laser 1",fg=label_fg_color,bg=bg_color),LabelFrame(parent,text="Laser 2",fg=label_fg_color,bg=bg_color)]
-		self.laser_window[0].grid(row=3,column=1)
-		self.laser_window[1].grid(row=5,column=1)
+		self.laser_window[0].grid(row=3,column=1,sticky=W)
+		self.laser_window[1].grid(row=5,column=1,sticky=W)
 
 
 		self.laser_sweep=[]
@@ -1030,14 +1029,15 @@ class TransferCavity:
 		self.laser_logging_set=[False,False]
 		self.master_logging_set=False
 		self.log_las_file=[None]*2
-		self.slave_err_log=[None]*2
-		self.slave_time_log=[None]*2
-		self.slave_rfreq_log=[None]*2
-		self.slave_lfreq_log=[None]*2
-		self.slave_rr_log=[None]*2
-		self.slave_lr_log=[None]*2
-		self.slave_pow_log=[None]*2
-		self.slave_wvmfreq_log=[None]*2
+		
+
+		self.master_logging_flag=threading.Event()
+		self.slave_logging_flag=[threading.Event(),threading.Event()]
+		self.master_logging_flag.clear()
+		self.slave_logging_flag[0].clear()
+		self.slave_logging_flag[1].clear()
+		self.master_logging_thread=None
+		self.slave_logging_thread=[None,None]
 
 		self.slave_err_temp=[None]*2
 		self.slave_time_temp=[None]*2
@@ -2263,29 +2263,31 @@ class TransferCavity:
 
 			#If error logging is checked, we create an empty array.
 			if self.cav_err_log.get():
+
 				if self.mlog_filename is None:
-					filename=self.mlog_default_directory+"logM"+datetime.datetime.fromtimestamp(time()).strftime('-%Y-%m-%d-%H.%M.%S')+".hdf5"
-				else:
-					filename=self.mlog_filename
-				self.master_f=h5py.File(filename,'w')
+					self.mlog_filename=self.mlog_default_directory+"logM"+datetime.datetime.fromtimestamp(time()).strftime('-%Y-%m-%d-%H.%M.%S')+".hdf5"
 
-				self.master_error_temp=np.zeros(10000,dtype='float32')
-				self.master_time_temp=np.zeros(10000,dtype='float32')
+				with h5py.File(self.mlog_filename,'a') as f:
+					f.create_dataset('Errors',(1,),maxshape=(None,),dtype='float32')
+					f.create_dataset('Time',(1,),maxshape=(None,),dtype='float32')
+					f.attrs['Lockpoint']=self.lock.master_lockpoint
+					f.attrs['ScanAmplitude']=self.transfer_lock.daq_tasks.ao_scan.amplitude
+					f.attrs['ScanTime']=self.transfer_lock.daq_tasks.ao_scan.scan_time
+					f.attrs['Samples']=self.transfer_lock.daq_tasks.ao_scan.n_samples
+					f.attrs['SamplingRate']=self.transfer_lock.daq_tasks.ao_scan.sample_rate
 
-				self.master_error_log=self.master_f.create_dataset('Errors',(10**4,),maxshape=(None,),dtype='float32')
-				self.master_time_log=self.master_f.create_dataset('Time',(10**4,),maxshape=(None,),dtype='float32')
+				self.master_error_temp=queue.Queue()
+				self.master_time_temp=queue.Queue()
 
-				self.master_f.attrs['Lockpoint']=self.lock.master_lockpoint
-				self.master_f.attrs['ScanAmplitude']=self.transfer_lock.daq_tasks.ao_scan.amplitude
-				self.master_f.attrs['ScanTime']=self.transfer_lock.daq_tasks.ao_scan.scan_time
-				self.master_f.attrs['Samples']=self.transfer_lock.daq_tasks.ao_scan.n_samples
-				self.master_f.attrs['SamplingRate']=self.transfer_lock.daq_tasks.ao_scan.sample_rate
-			
 				self.mt_start=time()
 
 				self.transfer_lock._master_counter=0
 
+				if not self.master_logging_flag.is_set():
+					self.start_master_logging_thread()
+
 				self.master_logging_set=True
+
 		
 
 	#Method engaging lock for the slave laser. Possible only, if the cavity lock is already engaged. 
@@ -2319,37 +2321,56 @@ class TransferCavity:
 			if self.las_err_log[ind].get():
 
 				if self.laslog_filenames[ind] is None:
-					filename=self.laslog_default_directories[ind]+"logS"+datetime.datetime.fromtimestamp(time()).strftime('-%Y-%m-%d-%H.%M.%S')+".hdf5"
-				else:
-					filename=self.laslog_filenames[ind]
-				self.log_las_file[ind]=h5py.File(filename,'w')
+					self.laslog_filenames[ind]=self.laslog_default_directories[ind]+"logS"+datetime.datetime.fromtimestamp(time()).strftime('-%Y-%m-%d-%H.%M.%S')+".hdf5"
 
-				self.slave_err_temp[ind]=np.zeros(10000,dtype='float32')
-				self.slave_time_temp[ind]=np.zeros(10000,dtype='float32')
-				self.slave_rfreq_temp[ind]=np.zeros(10000,dtype='float32')
-				self.slave_lfreq_temp[ind]=np.zeros(10000,dtype='float32')
-				self.slave_rr_temp[ind]=np.zeros(10000,dtype='float32')
-				self.slave_lr_temp[ind]=np.zeros(10000,dtype='float32')
-				self.slave_pow_temp[ind]=np.zeros(10000,dtype='float32')
-				self.slave_wvmfreq_temp[ind]=np.zeros(10000,dtype='float32')
+				with h5py.File(self.laslog_filenames[ind],'a') as f:
+					if not self.simulate:
+						f.attrs['SetFrequency']=self.lasers[ind].get_set_frequency()
 				
-				self.slave_err_log[ind]=self.log_las_file[ind].create_dataset('Errors',(10**4,),maxshape=(None,),dtype='float32')
-				self.slave_time_log[ind]=self.log_las_file[ind].create_dataset('Time',(10**4,),maxshape=(None,),dtype='float32')
-				self.slave_rfreq_log[ind]=self.log_las_file[ind].create_dataset('RealFrequency',(10**4,),maxshape=(None,),dtype='float32')
-				self.slave_lfreq_log[ind]=self.log_las_file[ind].create_dataset('LockFrequency',(10**4,),maxshape=(None,),dtype='float32')
-				self.slave_rr_log[ind]=self.log_las_file[ind].create_dataset('RealR',(10**4,),maxshape=(None,),dtype='float32')
-				self.slave_lr_log[ind]=self.log_las_file[ind].create_dataset('LockR',(10**4,),maxshape=(None,),dtype='float32')
-				self.slave_pow_log[ind]=self.log_las_file[ind].create_dataset('Power',(10**4,),maxshape=(None,),dtype='float32')
-				self.slave_wvmfreq_log[ind]=self.log_las_file[ind].create_dataset('WvmFrequency',(10**4,),maxshape=(None,),dtype='float64')
+					f.create_dataset('Errors',(1,),maxshape=(None,),dtype='float32')
+					f.create_dataset('Time',(1,),maxshape=(None,),dtype='float32')
+					f.create_dataset('RealFrequency',(1,),maxshape=(None,),dtype='float32')
+					f.create_dataset('LockFrequency',(1,),maxshape=(None,),dtype='float32')
+					f.create_dataset('RealR',(1,),maxshape=(None,),dtype='float32')
+					f.create_dataset('LockR',(1,),maxshape=(None,),dtype='float32')
+					f.create_dataset('Power',(1,),maxshape=(None,),dtype='float32')
+					f.create_dataset('WvmFrequency',(1,),maxshape=(None,),dtype='float64')
 
-				if not self.simulate:
-					self.log_las_file[ind].attrs['SetFrequency']=self.lasers[ind].get_set_frequency()
-
+				
+				self.slave_err_temp[ind]=queue.Queue()
+				self.slave_time_temp[ind]=queue.Queue()
+				self.slave_rfreq_temp[ind]=queue.Queue()
+				self.slave_lfreq_temp[ind]=queue.Queue()
+				self.slave_rr_temp[ind]=queue.Queue()
+				self.slave_lr_temp[ind]=queue.Queue()
+				self.slave_pow_temp[ind]=queue.Queue()
+				self.slave_wvmfreq_temp[ind]=queue.Queue()
+				
 				self.lt_start[ind]=time()
 
 				self.transfer_lock._slave_counters[ind]=0
 
+				if not self.slave_logging_flag[ind].is_set():
+					self.start_slave_logging_thread(ind)
+
 				self.laser_logging_set[ind]=True
+
+
+
+
+	def start_master_logging_thread(self):
+
+		self.master_logging_flag.set()
+		self.master_logging_thread=threading.Thread(target=self.transfer_lock.master_logging_loop,kwargs={"GUI_object":self})
+		self.master_logging_thread.start()
+
+	def start_slave_logging_thread(self,ind):
+
+
+		self.slave_logging_flag[ind].set()
+		self.slave_logging_thread[ind]=threading.Thread(target=self.transfer_lock.slave_logging_loop,kwargs={"GUI_object":self,"ind":ind})
+		self.slave_logging_thread[ind].start()
+
 
 	"""
 	Method called when cavity's lock is being disengaged. Note, that at the end it also automatically
@@ -2378,22 +2399,30 @@ class TransferCavity:
 		#If error signal logging was checked, the hdf5 file is closed.
 		if self.cav_err_log.get():
 			self.master_logging_set=False
+			self.master_logging_flag.clear()
 
-			rem=self.transfer_lock._master_counter-self.transfer_lock._master_counter%10000
-			self.master_error_log[rem:self.transfer_lock._master_counter]=self.master_error_temp[:self.transfer_lock._master_counter%10000]
-			self.master_time_log[rem:self.transfer_lock._master_counter]=self.master_time_temp[:self.transfer_lock._master_counter%10000]
+			with h5py.File(self.mlog_filename,'a') as f:
 
-			self.master_error_log.resize(self.transfer_lock._master_counter,axis=0)
-			self.master_time_log.resize(self.transfer_lock._master_counter,axis=0)
+				queue_length=len(list(self.master_error_temp.queue))
+				dataset_length=f['Errors'].shape[0]
+
+				if dataset_length==1:
+					f['Errors'].resize(queue_length,axis=0)
+					f['Time'].resize(queue_length,axis=0)
+				else:
+					f['Errors'].resize(dataset_length+queue_length,axis=0)
+					f['Time'].resize(dataset_length+queue_length,axis=0)
+				
+				f['Errors'][-queue_length:]=list(self.master_error_temp.queue)
+				f['Time'][-queue_length:]=list(self.master_time_temp.queue)
 
 
-			try:
-				self.master_error_log[0]=self.master_error_log[1]
-				self.master_time_log[0]=self.master_time_log[1]
-			except:
-				pass
+				try:
+					f['Errors'][0]=f['Errors'][1]
+				except:
+					pass
 
-			self.master_f.close()
+
 		
 		sleep(0.01)
 
@@ -2446,37 +2475,55 @@ class TransferCavity:
 		#Again, error signal is logged if the option was chosen.
 		if self.las_err_log[ind].get():
 			self.laser_logging_set[ind]=False
+			self.slave_logging_flag[ind].clear()
 
-			rem=self.transfer_lock._slave_counters[ind]-self.transfer_lock._slave_counters[ind]%10000
-			self.slave_err_log[ind][rem:self.transfer_lock._slave_counters[ind]]=self.slave_err_temp[ind][:self.transfer_lock._slave_counters[ind]%10000]
-			self.slave_time_log[ind][rem:self.transfer_lock._slave_counters[ind]]=self.slave_time_temp[ind][:self.transfer_lock._slave_counters[ind]%10000]
-			self.slave_rfreq_log[ind][rem:self.transfer_lock._slave_counters[ind]]=self.slave_rfreq_temp[ind][:self.transfer_lock._slave_counters[ind]%10000]
-			self.slave_lfreq_log[ind][rem:self.transfer_lock._slave_counters[ind]]=self.slave_lfreq_temp[ind][:self.transfer_lock._slave_counters[ind]%10000]
-			self.slave_rr_log[ind][rem:self.transfer_lock._slave_counters[ind]]=self.slave_rr_temp[ind][:self.transfer_lock._slave_counters[ind]%10000]
-			self.slave_lr_log[ind][rem:self.transfer_lock._slave_counters[ind]]=self.slave_lr_temp[ind][:self.transfer_lock._slave_counters[ind]%10000]
-			self.slave_pow_log[ind][rem:self.transfer_lock._slave_counters[ind]]=self.slave_pow_temp[ind][:self.transfer_lock._slave_counters[ind]%10000]
-			self.slave_wvmfreq_log[ind][rem:self.transfer_lock._slave_counters[ind]]=self.slave_wvmfreq_temp[ind][:self.transfer_lock._slave_counters[ind]%10000]
+			with h5py.File(self.laslog_filenames[ind],'a') as f:
 
-			self.slave_err_log[ind].resize(self.transfer_lock._slave_counters[ind],axis=0)
-			self.slave_time_log[ind].resize(self.transfer_lock._slave_counters[ind],axis=0)
-			self.slave_rfreq_log[ind].resize(self.transfer_lock._slave_counters[ind],axis=0)
-			self.slave_lfreq_log[ind].resize(self.transfer_lock._slave_counters[ind],axis=0)
-			self.slave_rr_log[ind].resize(self.transfer_lock._slave_counters[ind],axis=0)
-			self.slave_lr_log[ind].resize(self.transfer_lock._slave_counters[ind],axis=0)
-			self.slave_pow_log[ind].resize(self.transfer_lock._slave_counters[ind],axis=0)
-			self.slave_wvmfreq_log[ind].resize(self.transfer_lock._slave_counters[ind],axis=0)
+				queue_length=len(list(self.slave_err_temp[ind].queue))
+				dataset_length=f['Errors'].shape[0]
 
-			try:
-				self.slave_err_log[ind][0]=self.slave_err_log[ind][1]
-				self.slave_time_log[ind][0]=self.slave_time_log[ind][1]
-				self.slave_rfreq_log[ind][0]=self.slave_rfreq_log[ind][1]
-				self.slave_lfreq_log[ind][0]=self.slave_lfreq_log[ind][1]
-				self.slave_rr_log[ind][0]=self.slave_rr_log[ind][1]
-				self.slave_lr_log[ind][0]=self.slave_lr_log[ind][1]
-			except:
-				pass
+				if dataset_length==1:
+					f['Errors'].resize(queue_length,axis=0)
+					f['Time'].resize(queue_length,axis=0)
+					f['RealFrequency'].resize(queue_length,axis=0)
+					f['LockFrequency'].resize(queue_length,axis=0)
+					f['RealR'].resize(queue_length,axis=0)
+					f['LockR'].resize(queue_length,axis=0)
+					f['Power'].resize(queue_length,axis=0)
+					f['WvmFrequency'].resize(queue_length,axis=0)
 
-			self.log_las_file[ind].close()
+				else:
+					f['Errors'].resize(dataset_length+queue_length,axis=0)
+					f['Time'].resize(dataset_length+queue_length,axis=0)
+					f['RealFrequency'].resize(dataset_length+queue_length,axis=0)
+					f['LockFrequency'].resize(dataset_length+queue_length,axis=0)
+					f['RealR'].resize(dataset_length+queue_length,axis=0)
+					f['LockR'].resize(dataset_length+queue_length,axis=0)
+					f['Power'].resize(dataset_length+queue_length,axis=0)
+					f['WvmFrequency'].resize(dataset_length+queue_length,axis=0)
+
+				f['Errors'][-queue_length:]=list(self.slave_err_temp[ind].queue)
+				f['Time'][-queue_length:]=list(self.slave_time_temp[ind].queue)
+				f['RealFrequency'][-queue_length:]=list(self.slave_rfreq_temp[ind].queue)
+				f['LockFrequency'][-queue_length:]=list(self.slave_lfreq_temp[ind].queue)
+				f['RealR'][-queue_length:]=list(self.slave_rr_temp[ind].queue)
+				f['LockR'][-queue_length:]=list(self.slave_lr_temp[ind].queue)
+				f['Power'][-queue_length:]=list(self.slave_pow_temp[ind].queue)
+				f['WvmFrequency'][-queue_length:]=list(self.slave_wvmfreq_temp[ind].queue)
+
+				try:
+					f['Errors'][0]=f['Errors'][1]
+					f['Time'][0]=f['Time'][1]
+					f['RealFrequency'][0]=f['RealFrequency'][1]
+					f['LockFrequency'][0]=f['LockFrequency'][1]
+					f['RealR'][0]=f['RealR'][1]
+					f['LockR'][0]=f['LockR'][1]
+					f['Power'][0]=f['Power'][1]
+					f['WvmFrequency'][0]=f['WvmFrequency'][1]
+
+				except:
+					pass
+
 
 
 	"""
@@ -3093,6 +3140,8 @@ class TransferCavity:
 
 		if self.transfer_lock.master_lock_engaged:
 			self.disengage_cavity_lock()
+
+
 
 
 #################################################################################################################

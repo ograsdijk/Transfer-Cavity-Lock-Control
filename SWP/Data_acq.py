@@ -2,7 +2,9 @@ import nidaqmx as dq
 import matplotlib.pyplot as plt
 import numpy as np
 import math
+import queue
 import logging
+import h5py
 from threading import Thread, Event
 from time import sleep
 
@@ -241,6 +243,96 @@ class TransferLock:
 			self.slave_locked_flags[ind].clear()
 
 
+
+	def master_logging_loop(self,GUI_object=None):
+		
+
+		while GUI_object.master_logging_flag.is_set():
+
+			sleep(10)
+
+			if GUI_object.master_error_temp.empty():
+					continue
+
+			with h5py.File(GUI_object.mlog_filename,'a') as f:
+
+				queue_length=len(list(GUI_object.master_error_temp.queue))
+
+				dataset_length=f['Errors'].shape[0]
+
+				if dataset_length==1:
+					f['Errors'].resize(queue_length,axis=0)
+					f['Time'].resize(queue_length,axis=0)
+				else:
+					f['Errors'].resize(dataset_length+queue_length,axis=0)
+					f['Time'].resize(dataset_length+queue_length,axis=0)
+				
+				f['Errors'][-queue_length:]=list(GUI_object.master_error_temp.queue)
+				f['Time'][-queue_length:]=list(GUI_object.master_time_temp.queue)
+
+				GUI_object.master_error_temp=queue.Queue(maxsize=10000)
+				GUI_object.master_time_temp=queue.Queue(maxsize=10000)
+
+			
+
+
+	def slave_logging_loop(self,GUI_object=None,ind=None):
+
+		
+		while GUI_object.slave_logging_flag[ind].is_set():
+			sleep(10)
+
+
+			if GUI_object.slave_err_temp[ind].empty():
+				continue
+
+			with h5py.File(GUI_object.laslog_filenames[ind],'a') as f:
+
+				queue_length=len(list(GUI_object.slave_err_temp[ind].queue))
+				dataset_length=f['Errors'].shape[0]
+
+
+				if dataset_length==1:
+					f['Errors'].resize(queue_length,axis=0)
+					f['Time'].resize(queue_length,axis=0)
+					f['RealFrequency'].resize(queue_length,axis=0)
+					f['LockFrequency'].resize(queue_length,axis=0)
+					f['RealR'].resize(queue_length,axis=0)
+					f['LockR'].resize(queue_length,axis=0)
+					f['Power'].resize(queue_length,axis=0)
+					f['WvmFrequency'].resize(queue_length,axis=0)
+
+				else:
+					f['Errors'].resize(dataset_length+queue_length,axis=0)
+					f['Time'].resize(dataset_length+queue_length,axis=0)
+					f['RealFrequency'].resize(dataset_length+queue_length,axis=0)
+					f['LockFrequency'].resize(dataset_length+queue_length,axis=0)
+					f['RealR'].resize(dataset_length+queue_length,axis=0)
+					f['LockR'].resize(dataset_length+queue_length,axis=0)
+					f['Power'].resize(dataset_length+queue_length,axis=0)
+					f['WvmFrequency'].resize(dataset_length+queue_length,axis=0)
+
+				f['Errors'][-queue_length:]=list(GUI_object.slave_err_temp[ind].queue)
+				f['Time'][-queue_length:]=list(GUI_object.slave_time_temp[ind].queue)
+				f['RealFrequency'][-queue_length:]=list(GUI_object.slave_rfreq_temp[ind].queue)
+				f['LockFrequency'][-queue_length:]=list(GUI_object.slave_lfreq_temp[ind].queue)
+				f['RealR'][-queue_length:]=list(GUI_object.slave_rr_temp[ind].queue)
+				f['LockR'][-queue_length:]=list(GUI_object.slave_lr_temp[ind].queue)
+				f['Power'][-queue_length:]=list(GUI_object.slave_pow_temp[ind].queue)
+				f['WvmFrequency'][-queue_length:]=list(GUI_object.slave_wvmfreq_temp[ind].queue)
+
+				GUI_object.slave_err_temp[ind]=queue.Queue(maxsize=10000)
+				GUI_object.slave_time_temp[ind]=queue.Queue(maxsize=10000)
+				GUI_object.slave_rfreq_temp[ind]=queue.Queue(maxsize=10000)
+				GUI_object.slave_lfreq_temp[ind]=queue.Queue(maxsize=10000)
+				GUI_object.slave_rr_temp[ind]=queue.Queue(maxsize=10000)
+				GUI_object.slave_lr_temp[ind]=queue.Queue(maxsize=10000)
+				GUI_object.slave_pow_temp[ind]=queue.Queue(maxsize=10000)
+				GUI_object.slave_wvmfreq_temp[ind]=queue.Queue(maxsize=10000)
+
+
+			
+
 	"""
 	The function below manages the scan and performs it through the DAQ_tasks class methods. It is run in 
 	a separate thread that is open from the level of GUI. This function runs as long as the scan flag is
@@ -340,22 +432,10 @@ class TransferLock:
 
 				if GUI_object.master_logging_set:
 
-					i_temp=self._master_counter%10000
-
-					GUI_object.master_time_temp[i_temp]=time()-GUI_object.mt_start
-					GUI_object.master_error_temp[i_temp]=GUI_object.lock.master_err
+					GUI_object.master_time_temp.put(time()-GUI_object.mt_start)
+					GUI_object.master_error_temp.put(GUI_object.lock.master_err)
 
 					self._master_counter+=1
-
-					if self._master_counter%10000==0:
-
-						GUI_object.master_error_log[self._master_counter-10000:self._master_counter]=GUI_object.master_error_temp
-						GUI_object.master_time_log[self._master_counter-10000:self._master_counter]=GUI_object.master_time_temp
-
-						GUI_object.master_f.flush()
-
-						GUI_object.master_error_log.resize((GUI_object.master_error_log.shape[0]+10**4,))
-						GUI_object.master_time_log.resize((GUI_object.master_time_log.shape[0]+10**4,))
 
 				for j in range(len(self.slave_locks_engaged)):
 					if self.slave_locks_engaged[j]:
@@ -374,43 +454,19 @@ class TransferLock:
 
 						if GUI_object.laser_logging_set[j]:
 
-							x_temp=self._slave_counters[j]%10000
 
+							GUI_object.slave_time_temp[j].put(time()-GUI_object.lt_start[j])
+							GUI_object.slave_err_temp[j].put(self.slave_err_history[j][-1])
+							GUI_object.slave_rfreq_temp[j].put(GUI_object.lock.get_laser_abs_freq(j))
+							GUI_object.slave_lfreq_temp[j].put(GUI_object.lock.get_laser_abs_lockpoint(j))
+							GUI_object.slave_rr_temp[j].put(GUI_object.lock.slave_Rs[j])
+							GUI_object.slave_lr_temp[j].put(GUI_object.lock.slave_lockpoints[j])
+							GUI_object.slave_pow_temp[j].put(1000*np.mean(self.daq_tasks.power_PDs.power[j]))
+							GUI_object.slave_wvmfreq_temp[j].put(GUI_object.real_frequency[j][0])
 
-							GUI_object.slave_time_temp[j][x_temp]=time()-GUI_object.lt_start[j]
-							GUI_object.slave_err_temp[j][x_temp]=self.slave_err_history[j][-1]
-							GUI_object.slave_rfreq_temp[j][x_temp]=GUI_object.lock.get_laser_abs_freq(j)
-							GUI_object.slave_lfreq_temp[j][x_temp]=GUI_object.lock.get_laser_abs_lockpoint(j)
-							GUI_object.slave_rr_temp[j][x_temp]=GUI_object.lock.slave_Rs[j]
-							GUI_object.slave_lr_temp[j][x_temp]=GUI_object.lock.slave_lockpoints[j]
-							GUI_object.slave_pow_temp[j][x_temp]=1000*np.mean(self.daq_tasks.power_PDs.power[j])
-							GUI_object.slave_wvmfreq_temp[j][x_temp]=GUI_object.real_frequency[j][0]
-
-							# print(GUI_object.real_frequency[j][0])
 
 							self._slave_counters[j]+=1
 
-							if self._slave_counters[j]%10000==0:
-
-								GUI_object.slave_time_log[j][self._slave_counters[j]-10000:self._slave_counters[j]]=GUI_object.slave_time_temp[j]
-								GUI_object.slave_err_log[j][self._slave_counters[j]-10000:self._slave_counters[j]]=GUI_object.slave_err_temp[j]
-								GUI_object.slave_rfreq_log[j][self._slave_counters[j]-10000:self._slave_counters[j]]=GUI_object.slave_rfreq_temp[j]
-								GUI_object.slave_lfreq_log[j][self._slave_counters[j]-10000:self._slave_counters[j]]=GUI_object.slave_lfreq_temp[j]
-								GUI_object.slave_rr_log[j][self._slave_counters[j]-10000:self._slave_counters[j]]=GUI_object.slave_rr_temp[j]
-								GUI_object.slave_lr_log[j][self._slave_counters[j]-10000:self._slave_counters[j]]=GUI_object.slave_lr_temp[j]
-								GUI_object.slave_pow_log[j][self._slave_counters[j]-10000:self._slave_counters[j]]=GUI_object.slave_pow_temp[j]
-								GUI_object.slave_wvmfreq_log[j][self._slave_counters[j]-10000:self._slave_counters[j]]=GUI_object.slave_wvmfreq_temp[j]
-
-								GUI_object.log_las_file[j].flush()
-
-								GUI_object.slave_time_log[j].resize((GUI_object.slave_time_log[j].shape[0]+10**4,))
-								GUI_object.slave_err_log[j].resize((GUI_object.slave_err_log[j].shape[0]+10**4,))
-								GUI_object.slave_rfreq_log[j].resize((GUI_object.slave_rfreq_log[j].shape[0]+10**4,))
-								GUI_object.slave_lfreq_log[j].resize((GUI_object.slave_lfreq_log[j].shape[0]+10**4,))
-								GUI_object.slave_rr_log[j].resize((GUI_object.slave_rr_log[j].shape[0]+10**4,))
-								GUI_object.slave_lr_log[j].resize((GUI_object.slave_lr_log[j].shape[0]+10**4,))
-								GUI_object.slave_pow_log[j].resize((GUI_object.slave_pow_log[j].shape[0]+10**4,))
-								GUI_object.slave_wvmfreq_log[j].resize((GUI_object.slave_wvmfreq_log[j].shape[0]+10**4,))
 
 
 			self._counter+=1
@@ -438,11 +494,11 @@ class Signal:
 	def __init__(self,datax,datay,fltr):
 
 		self.data_x=datax
-		self.data_y=datay
+		self.data_y=datay-np.mean(datay[int(len(datay)/5):])
 		self.dx=datax[1]-datax[0]
-		self.mx=np.max(datay)
+		self.mx=np.max(self.data_y)
 		# self.smooth_y=fltr.apply(datay,0,datax[1]-datax[0])
-		self.smooth_y=fltr.peak_filter(datay)
+		self.smooth_y=fltr.peak_filter(self.data_y)
 		self.fltr=fltr
 		self.der_y=[]
 		self.smooth_der=[]
