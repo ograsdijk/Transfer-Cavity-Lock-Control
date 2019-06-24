@@ -312,15 +312,54 @@ class TransferLock:
 					f['Power'].resize(dataset_length+queue_length,axis=0)
 					f['WvmFrequency'].resize(dataset_length+queue_length,axis=0)
 
-				f['Errors'][-queue_length:]=list(GUI_object.slave_err_temp[ind].queue)
-				f['Time'][-queue_length:]=list(GUI_object.slave_time_temp[ind].queue)
-				f['RealFrequency'][-queue_length:]=list(GUI_object.slave_rfreq_temp[ind].queue)
-				f['LockFrequency'][-queue_length:]=list(GUI_object.slave_lfreq_temp[ind].queue)
-				f['RealR'][-queue_length:]=list(GUI_object.slave_rr_temp[ind].queue)
-				f['LockR'][-queue_length:]=list(GUI_object.slave_lr_temp[ind].queue)
-				f['Power'][-queue_length:]=list(GUI_object.slave_pow_temp[ind].queue)
-				f['WvmFrequency'][-queue_length:]=list(GUI_object.slave_wvmfreq_temp[ind].queue)
+				try:
+					f['Errors'][-queue_length:]=list(GUI_object.slave_err_temp[ind].queue)
+				except TypeError:
+					ql=len(list(GUI_object.slave_err_temp[ind].queue))
+					f['Errors'][-ql:]=list(GUI_object.slave_err_temp[ind].queue)
 
+				try:
+					f['Time'][-queue_length:]=list(GUI_object.slave_time_temp[ind].queue)
+				except TypeError:
+					ql=len(list(GUI_object.slave_time_temp[ind].queue))
+					f['Time'][-ql:]=list(GUI_object.slave_time_temp[ind].queue)
+
+				try:
+					f['RealFrequency'][-queue_length:]=list(GUI_object.slave_rfreq_temp[ind].queue)
+				except TypeError:
+					ql=len(list(GUI_object.slave_rfreq_temp[ind].queue))
+					f['RealFrequency'][-ql:]=list(GUI_object.slave_rfreq_temp[ind].queue)
+
+				try:
+					f['LockFrequency'][-queue_length:]=list(GUI_object.slave_lfreq_temp[ind].queue)
+				except TypeError:
+					ql=len(list(GUI_object.slave_lfreq_temp[ind].queue))
+					f['LockFrequency'][-ql:]=list(GUI_object.slave_lfreq_temp[ind].queue)
+
+				try:
+					f['RealR'][-queue_length:]=list(GUI_object.slave_rr_temp[ind].queue)
+				except TypeError:
+					ql=len(list(GUI_object.slave_rr_temp[ind].queue))
+					f['RealR'][-ql:]=list(GUI_object.slave_rr_temp[ind].queue)
+
+				try:	
+					f['LockR'][-queue_length:]=list(GUI_object.slave_lr_temp[ind].queue)
+				except TypeError:
+					ql=len(list(GUI_object.slave_lr_temp[ind].queue))
+					f['LockR'][-ql:]=list(GUI_object.slave_lr_temp[ind].queue)
+
+				try:
+					f['Power'][-queue_length:]=list(GUI_object.slave_pow_temp[ind].queue)
+				except TypeError:
+					ql=len(list(GUI_object.slave_pow_temp[ind].queue))
+					f['Power'][-ql:]=list(GUI_object.slave_pow_temp[ind].queue)
+
+				try:
+					f['WvmFrequency'][-queue_length:]=list(GUI_object.slave_wvmfreq_temp[ind].queue)
+				except TypeError:
+					ql=len(list(GUI_object.slave_wvmfreq_temp[ind].queue))
+					f['WvmFrequency'][-ql:]=list(GUI_object.slave_wvmfreq_temp[ind].queue)
+					
 				GUI_object.slave_err_temp[ind]=queue.Queue(maxsize=10000)
 				GUI_object.slave_time_temp[ind]=queue.Queue(maxsize=10000)
 				GUI_object.slave_rfreq_temp[ind]=queue.Queue(maxsize=10000)
@@ -457,8 +496,8 @@ class TransferLock:
 
 							GUI_object.slave_time_temp[j].put(time()-GUI_object.lt_start[j])
 							GUI_object.slave_err_temp[j].put(self.slave_err_history[j][-1])
-							GUI_object.slave_rfreq_temp[j].put(GUI_object.lock.get_laser_abs_freq(j))
-							GUI_object.slave_lfreq_temp[j].put(GUI_object.lock.get_laser_abs_lockpoint(j))
+							GUI_object.slave_rfreq_temp[j].put(-GUI_object.lock.get_laser_abs_freq(j))
+							GUI_object.slave_lfreq_temp[j].put(-GUI_object.lock.get_laser_abs_lockpoint(j))
 							GUI_object.slave_rr_temp[j].put(GUI_object.lock.slave_Rs[j])
 							GUI_object.slave_lr_temp[j].put(GUI_object.lock.slave_lockpoints[j])
 							GUI_object.slave_pow_temp[j].put(1000*np.mean(self.daq_tasks.power_PDs.power[j]))

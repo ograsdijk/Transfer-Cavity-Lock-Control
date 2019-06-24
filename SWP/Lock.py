@@ -148,6 +148,7 @@ class Lock:
 
 	#User provides deviation in MHz, which has to be translated into units of R using slave laser's FSR
 	def set_laser_lockpoint(self,deviation,ind):
+		deviation*=-1
 		x=1000*self._FSR/2
 		if deviation>x:
 			self.slave_sectors[ind]=math.ceil((deviation-x)/(2*x))
@@ -161,6 +162,7 @@ class Lock:
 
 
 	def move_laser_lockpoint(self,deviation,ind):
+		deviation*=-1
 		new_fr=self.get_laser_lockpoint(ind)+deviation
 		if new_fr>self._FSR*1000/2:
 			new_fr-=self._FSR*1000
