@@ -16,7 +16,7 @@ from .Themes import Colors
 This file contains the class that represents the transfer lock and two helper classes. The main class ("TransferLock")
 uses the class "Lock" to generate feedback signal and applires it to devices by communicating with the DAQ through
 the DAQ_tasks class contained in a different file. This class is responsible for acquiring the signal and filtering
-(through helper classes), extracting necessary information, updating the GUI, obtaining the mentioned feedback, 
+(through helper classes), extracting necessary information, updating the GUI, obtaining the mentioned feedback,
 applying it through DAQ and plotting the data. In summary, it manages the cavity scan and its data.
 
 """
@@ -62,7 +62,7 @@ class TransferLock:
 
 		#Criterion used for peak finding
 		self.master_peak_crit=float(cfg['CAVITY']['PeakCriterion'])
-		
+
 		#RMS criteria for slave lasers
 		self.slave_rms_crits=[float(cfg['LASER1']['LockThreshold'])]
 		if n>1:
@@ -90,7 +90,7 @@ class TransferLock:
 		self.slave_err_rms=[0]*n
 
 		"""
-		Lock counter. For slave lasers, they are considered locked if their error signal RMS is below the threshold 
+		Lock counter. For slave lasers, they are considered locked if their error signal RMS is below the threshold
 		50 consecutive times (can be changed).
 		"""
 		self.slave_lock_counters=[0]*n
@@ -121,10 +121,10 @@ class TransferLock:
 	def start_scan(self):
 		self._scan_flag=True
 
-		
+
 	def stop_scan(self):
 		self._scan_flag=False
-		
+
 	"""
 	Two function below are responsible for "acquiring" signal, by which I mean filtering the signal and finding
 	peaks. The data is in reality obtained regardless of these functions and is contained in DAQ_tasks object,
@@ -149,21 +149,21 @@ class TransferLock:
 
 	"""
 	Series of locking functions that are used only if appropriate locks are engaged and if master signal has exactly
-	2 peaks. The flags (in form of threading.Event) are used to time different processes correctly. They're just a 
-	safety precaution. 
+	2 peaks. The flags (in form of threading.Event) are used to time different processes correctly. They're just a
+	safety precaution.
 
-	Both lock (lock_master and lock_laser) functions first call a different method, which refreshes the lock. These 
-	functions (refresh_master_lock and refresh_slave_lock) first call a function from the Lock class that uses 
+	Both lock (lock_master and lock_laser) functions first call a different method, which refreshes the lock. These
+	functions (refresh_master_lock and refresh_slave_lock) first call a function from the Lock class that uses
 	the filtered signal and previously found peak positions (through obtain_master(slave)_signal method) contained
 	in the object of Signal class that's saved to one of this object's attributes. The Lock class method finds new
-	errors for this iterations and returns them ("mer" and "ser" variables below). 
+	errors for this iterations and returns them ("mer" and "ser" variables below).
 
 	These errors are then passed to update_master_error and update_slave_error methods. These simply add the error
 	to appropriate queues and then calculate RMS of the error signal using chosen number of points. The resulting
 	RMS is compared with thresholds and status of the laser is changed to "locked", if criterion is met. For slave
 	laser the criterion has to be met for 25 consecutive iterations to considered the laser locked.
 
-	Finally, a method of the Lock class is called and it calculates the feedback signals using gains and current 
+	Finally, a method of the Lock class is called and it calculates the feedback signals using gains and current
 	and previous error signals. Once this is done, for the cavity lock the scanning offset is moved by amount set
 	by the feedback signal, and for lasers their voltages are adjusted (moved) by amounts set by their respective
 	feedback signals.
@@ -211,7 +211,7 @@ class TransferLock:
 	def update_master_error(self,err):
 
 		#It is a FIFO queue which automatically removes the oldest element if it becomes over limit
-		self.master_err_history.append(err) 
+		self.master_err_history.append(err)
 
 		if len(self.master_err_history)<=self.rms_points:
 			self.master_err_rms=math.sqrt(np.sum(np.power(list(self.master_err_history),2))/len(list(self.master_err_history)))
@@ -245,7 +245,7 @@ class TransferLock:
 
 
 	def master_logging_loop(self,GUI_object=None):
-		
+
 
 		while GUI_object.master_logging_flag.is_set():
 
@@ -266,19 +266,19 @@ class TransferLock:
 				else:
 					f['Errors'].resize(dataset_length+queue_length,axis=0)
 					f['Time'].resize(dataset_length+queue_length,axis=0)
-				
+
 				f['Errors'][-queue_length:]=list(GUI_object.master_error_temp.queue)
 				f['Time'][-queue_length:]=list(GUI_object.master_time_temp.queue)
 
 				GUI_object.master_error_temp=queue.Queue(maxsize=10000)
 				GUI_object.master_time_temp=queue.Queue(maxsize=10000)
 
-			
+
 
 
 	def slave_logging_loop(self,GUI_object=None,ind=None):
 
-		
+
 		while GUI_object.slave_logging_flag[ind].is_set():
 			sleep(10)
 
@@ -342,7 +342,7 @@ class TransferLock:
 					ql=len(list(GUI_object.slave_rr_temp[ind].queue))
 					f['RealR'][-ql:]=list(GUI_object.slave_rr_temp[ind].queue)
 
-				try:	
+				try:
 					f['LockR'][-queue_length:]=list(GUI_object.slave_lr_temp[ind].queue)
 				except TypeError:
 					ql=len(list(GUI_object.slave_lr_temp[ind].queue))
@@ -359,7 +359,7 @@ class TransferLock:
 				except TypeError:
 					ql=len(list(GUI_object.slave_wvmfreq_temp[ind].queue))
 					f['WvmFrequency'][-ql:]=list(GUI_object.slave_wvmfreq_temp[ind].queue)
-					
+
 				GUI_object.slave_err_temp[ind]=queue.Queue(maxsize=10000)
 				GUI_object.slave_time_temp[ind]=queue.Queue(maxsize=10000)
 				GUI_object.slave_rfreq_temp[ind]=queue.Queue(maxsize=10000)
@@ -370,10 +370,10 @@ class TransferLock:
 				GUI_object.slave_wvmfreq_temp[ind]=queue.Queue(maxsize=10000)
 
 
-			
+
 
 	"""
-	The function below manages the scan and performs it through the DAQ_tasks class methods. It is run in 
+	The function below manages the scan and performs it through the DAQ_tasks class methods. It is run in
 	a separate thread that is open from the level of GUI. This function runs as long as the scan flag is
 	set to True. Currently, acquiring data and updating the plots is done sequentially in this function.
 	The order is as follows:
@@ -421,7 +421,7 @@ class TransferLock:
 					GUI_object.plot_win.all_lines[i+3].set_data([self.lock.slave_lockpoints[i-1]*self.lock.interval+self.lock.master_lockpoint]*2,[-10,10])
 			GUI_object.plot_win.ax.set_xlim(self.daq_tasks.ao_scan.scan_time*0.2, self.daq_tasks.ao_scan.scan_time*1.01)
 			GUI_object.plot_win.ax.set_ylim(np.amin(self.daq_tasks.PD_data)-0.05, np.amax(self.daq_tasks.PD_data)+0.2)
-	
+
 			if self.master_lock_engaged:
 
 				self.obtain_master_signal()
@@ -438,9 +438,9 @@ class TransferLock:
 					GUI_object.real_scoff.config(text='{:.2f}'.format(self.daq_tasks.ao_scan.offset))
 				else:
 					GUI_object.twopeak_status_cv.itemconfig(GUI_object.twopeak_status,fill=Colors['off_color'])
-					
-				if self.master_locked_flag:
 
+				if self.master_locked_flag:
+					self.socketserver.master_locked_flag = True
 					GUI_object.cav_lock_status_cv.itemconfig(GUI_object.cav_lock_status,fill=Colors['on_color'])
 
 					if any(self.slave_locks_engaged):
@@ -459,15 +459,18 @@ class TransferLock:
 								else:
 									GUI_object.laser_lock_status_cv[i].itemconfig(GUI_object.laser_lock_status[i],fill=Colors['off_color'])
 				else:
+					self.socketserver.master_locked_flag = False
 					GUI_object.cav_lock_status_cv.itemconfig(GUI_object.cav_lock_status,fill=Colors['off_color'])
 
-			
+
 			if self.master_lock_engaged and len(self.master_signal.peaks_x)==2:
 
 				X=np.linspace(0,len(self.master_err_history)-1,len(self.master_err_history))
 				GUI_object.plot_win.mline.set_data(X,self.master_err_history)
 				GUI_object.plot_win.ax_err.set_ylim(min(self.master_err_history)-self.master_rms_crit/3, self.master_rms_crit/3+max(self.master_err_history))
 				GUI_object.plot_win.ax_err.set_xlim(min(X), max(X))
+
+				GUI_object.socketserver.master_err = self.lock.master_err
 
 				if GUI_object.master_logging_set:
 
@@ -478,7 +481,7 @@ class TransferLock:
 
 				for j in range(len(self.slave_locks_engaged)):
 					if self.slave_locks_engaged[j]:
-
+						GUI_object.socketserver.slave_locked_flags[j] = True
 						Xs=np.linspace(0,len(self.slave_err_history[j])-1,len(self.slave_err_history[j]))
 						GUI_object.plot_win.slines[j].set_data(Xs,self.slave_err_history[j])
 						try:
@@ -490,6 +493,9 @@ class TransferLock:
 						except:
 							pass
 
+						GUI_object.socketserver.slave_err[j] = self.slave_err_history[j][-1]
+						GUI_object.socketserver.slave_freq[j] = -GUI_object.lock.get_laser_abs_freq(j)
+						GUI_object.socketserver.slave_lock[j] = -GUI_object.lock.get_laser_abs_lockpoint(j)
 
 						if GUI_object.laser_logging_set[j]:
 
@@ -505,7 +511,8 @@ class TransferLock:
 
 
 							self._slave_counters[j]+=1
-
+					else:
+						GUI_object.socketserver.slave_locked_flags[j] = False
 
 
 			self._counter+=1
@@ -519,16 +526,16 @@ class TransferLock:
 #################################################################################################################
 
 """
-Class below is responsible for smoothing the data, taking the derivative and finding peaks. I have found by trial 
-and error that the smallest error of peak finding happens for the parameters that are used as default and for 
+Class below is responsible for smoothing the data, taking the derivative and finding peaks. I have found by trial
+and error that the smallest error of peak finding happens for the parameters that are used as default and for
 the procedure used to find them. The peak finding algorithm takes approxiamtely 0.6ms, so it is no way a bottleneck.
-"""	
+"""
 
 class Signal:
 
 	"""
-	To initialize an object of this class one needs the X and Y data and an object of Filter class. During the 
-	initialization the data is smoothed using an SG filter. 
+	To initialize an object of this class one needs the X and Y data and an object of Filter class. During the
+	initialization the data is smoothed using an SG filter.
 	"""
 	def __init__(self,datax,datay,fltr):
 
@@ -548,14 +555,14 @@ class Signal:
 	"""
 	To find the peaks we look at the zero crossing of the derivative signal. The algorithm first finds first derivative
 	of the signal. Then, because taking a derivative a noise-amplifying process, the derivative signal is smoothed using
-	SG filter and then using a moving average. 
+	SG filter and then using a moving average.
 
-	To find peaks, we go over smoothed derivative signal until we find 2 points that are on the opposite side of 0 (we're 
-	looking for them to also have a positive slope). Once two such points are found, the algorithm looks at the hight of 
+	To find peaks, we go over smoothed derivative signal until we find 2 points that are on the opposite side of 0 (we're
+	looking for them to also have a positive slope). Once two such points are found, the algorithm looks at the hight of
 	the peak in the data. It is considered a real peak if peak>criterion*max(data). Because in our measurement we're going
 	to observe one or two peaks of similar height, with a decent SNR, such a simple criterion works perfectly well.
 
-	To find the position of the peak, we fit a linear function to 14 points around the zero crossing and get the zero 
+	To find the position of the peak, we fit a linear function to 14 points around the zero crossing and get the zero
 	crossing from the fit. 14 points used for a fit works very well for 1000 points per scan and peaks that are not extremely
 	narrow. This can be changed if necessary. Once the peak is found, the loop is skipped by "win_size".
 	"""
@@ -606,7 +613,7 @@ class Signal:
 """
 A helper class that defines multiple SG filters and a moving average. In the coefficent array, the first element is
 a smoothing window, the second one is first derivative, the third one is second derivative, and the last element can
-be used to obtained thrid derivative of the signal. These windows are convolved with the signal to obtain desired 
+be used to obtained thrid derivative of the signal. These windows are convolved with the signal to obtain desired
 result. Finally, moving average is defined, which is a convolution with a special [1,1,...,1]/n window.
 """
 class Filter:
