@@ -288,7 +288,6 @@ class socketServer(threading.Thread):
     def run(self):
         self.active.set()
         while self.active.is_set():
-            print('running communications')
             events = self.sel.select(timeout = self.timeout)
             for key, mask in events:
                 if key.data is None:

@@ -460,6 +460,7 @@ class TransferLock:
 									GUI_object.laser_lock_status_cv[i].itemconfig(GUI_object.laser_lock_status[i],fill=Colors['off_color'])
 				else:
 					GUI_object.socketserver.master_locked_flag = False
+					GUI_object.socketserver.master_err = np.nan
 					GUI_object.cav_lock_status_cv.itemconfig(GUI_object.cav_lock_status,fill=Colors['off_color'])
 
 
@@ -470,7 +471,7 @@ class TransferLock:
 				GUI_object.plot_win.ax_err.set_ylim(min(self.master_err_history)-self.master_rms_crit/3, self.master_rms_crit/3+max(self.master_err_history))
 				GUI_object.plot_win.ax_err.set_xlim(min(X), max(X))
 
-				GUI_object.socketserver.master_err = self.lock.master_err
+				GUI_object.socketserver.master_err = self.master_err_history[-1]
 
 				if GUI_object.master_logging_set:
 
@@ -513,7 +514,15 @@ class TransferLock:
 							self._slave_counters[j]+=1
 					else:
 						GUI_object.socketserver.slave_locked_flags[j] = False
-
+						GUI_object.socketserver.slave_err[j] = np.nan
+						GUI_object.socketserver.slave_frequency[j] = np.nan
+						GUI_object.socketserver.slave_lockpoint[j] = -GUI_object.lock.get_laser_abs_lockpoint(j)
+			else:
+				for j in range(len(self.slave_locks_engaged)):
+					GUI_object.socketserver.slave_locked_flags[j] = False
+					GUI_object.socketserver.slave_err[j] = np.nan
+					GUI_object.socketserver.slave_frequency[j] = np.nan
+					GUI_object.socketserver.slave_lockpoint[j] = -GUI_object.lock.get_laser_abs_lockpoint(j)
 
 			self._counter+=1
 
