@@ -440,7 +440,7 @@ class TransferLock:
 					GUI_object.twopeak_status_cv.itemconfig(GUI_object.twopeak_status,fill=Colors['off_color'])
 
 				if self.master_locked_flag:
-					self.socketserver.master_locked_flag = True
+					GUI_object.socketserver.master_locked_flag = True
 					GUI_object.cav_lock_status_cv.itemconfig(GUI_object.cav_lock_status,fill=Colors['on_color'])
 
 					if any(self.slave_locks_engaged):
@@ -459,7 +459,7 @@ class TransferLock:
 								else:
 									GUI_object.laser_lock_status_cv[i].itemconfig(GUI_object.laser_lock_status[i],fill=Colors['off_color'])
 				else:
-					self.socketserver.master_locked_flag = False
+					GUI_object.socketserver.master_locked_flag = False
 					GUI_object.cav_lock_status_cv.itemconfig(GUI_object.cav_lock_status,fill=Colors['off_color'])
 
 
@@ -494,8 +494,8 @@ class TransferLock:
 							pass
 
 						GUI_object.socketserver.slave_err[j] = self.slave_err_history[j][-1]
-						GUI_object.socketserver.slave_freq[j] = -GUI_object.lock.get_laser_abs_freq(j)
-						GUI_object.socketserver.slave_lock[j] = -GUI_object.lock.get_laser_abs_lockpoint(j)
+						GUI_object.socketserver.slave_frequency[j] = -GUI_object.lock.get_laser_abs_freq(j)
+						GUI_object.socketserver.slave_lockpoint[j] = -GUI_object.lock.get_laser_abs_lockpoint(j)
 
 						if GUI_object.laser_logging_set[j]:
 
