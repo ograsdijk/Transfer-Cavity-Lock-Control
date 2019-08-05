@@ -61,7 +61,7 @@ class GUI:
 
 	def run(self,debug=False,simulate=False):
 
-		self.socketserver = SocketServerLocking('', 65432)
+		self.socketserver = SocketServerLocking('', 65430)
 
 		pane=PanedWindow(self.root,sashwidth=5,sashpad=2,sashrelief=GROOVE,bg=bg_color)
 		pane.pack(fill=BOTH, expand=1)

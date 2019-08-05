@@ -320,8 +320,13 @@ class SocketServerLocking:
         self.slave_frequency = [None]*2
         self.slave_lockpoint = [None]*2
 
+        self.data_server = {'ReadValue':np.nan, 'verification':None, 'info':self.device_name
+        }
+        self.commands_server = {}
 
-        self.thread_communication = socketServer(self, int(port), 2)
+        print(self.data_server)
+
+        self.thread_communication = socketServer(self, host, int(port), 2)
         self.thread_communication.start()
 
         def __exit__(self, *exc):
