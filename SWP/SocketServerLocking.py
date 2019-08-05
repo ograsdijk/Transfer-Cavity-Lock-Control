@@ -288,6 +288,7 @@ class socketServer(threading.Thread):
     def run(self):
         self.active.set()
         while self.active.is_set():
+            print('running communications')
             events = self.sel.select(timeout = self.timeout)
             for key, mask in events:
                 if key.data is None:
@@ -313,33 +314,26 @@ class SocketServerLocking:
     def __init__(self, host, port):
         self.device_name = 'Laser Locking'
 
-        self.master_locked_flag = 'False'
+        self.master_locked_flag = False
         self.master_err = np.nan
         self.slave_locked_flags = [None]*2
         self.slave_err = [None]*2
         self.slave_frequency = [None]*2
         self.slave_lockpoint = [None]*2
 
-        self.data_server = {'ReadValue':np.nan, 'verification':None, 'info':self.device_name
-        }
         self.commands_server = {}
 
-        print(self.data_server)
-
         self.thread_communication = socketServer(self, host, int(port), 2)
+        # closes communication thread upon closing of main thread
+        self.thread_communication.setDaemon(True)
         self.thread_communication.start()
 
-        def __exit__(self, *exc):
-            """
-            Properly stopping the communication and command execution threads.
-            """
-            self.thread_commands.active.clear()
-            self.thread_communication.active.clear()
-
-        @property
-        def data_server(self):
-            return {
-                    'ReadValue':[self.master_locked_flag, self.master_err]+self.slave_locked_flags+self.slave_err+self.frequency+self.lockpoint,
-                    'verification':'laser locking',
-                    'info':self.device_name
-                   }
+    @property
+    def data_server(self):
+        return {
+                'ReadValue':[self.master_locked_flag, self.master_err]+\
+                            self.slave_locked_flags+self.slave_err+\
+                            self.slave_frequency+self.slave_lockpoint,
+                'verification':'laser locking',
+                'info':self.device_name
+               }

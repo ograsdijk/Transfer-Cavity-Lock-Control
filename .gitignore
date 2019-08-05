@@ -1,0 +1,13 @@
+.ipynb_checkpoints
+desktop.ini
+__pycache__
+*.swp
+*.pdf
+*.hdf5
+*.npy
+*.exe
+*.gch
+*.o
+*.swo
+*.hdf
+*.pyc
