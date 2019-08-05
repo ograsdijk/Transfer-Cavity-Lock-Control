@@ -2323,7 +2323,7 @@ class TransferCavity:
 			if self.las_err_log[ind].get():
 
 				if self.laslog_filenames[ind] is None:
-					self.laslog_filenames[ind]=self.laslog_default_directories[ind]+"logS"+datetime.datetime.fromtimestamp(time()).strftime('-%Y-%m-%d-%H.%M.%S')+".hdf5"
+					self.laslog_filenames[ind]=self.laslog_default_directories[ind]+"logS"+str(ind)+"_"+datetime.datetime.fromtimestamp(time()).strftime('-%Y-%m-%d-%H.%M.%S')+".hdf5"
 
 				with h5py.File(self.laslog_filenames[ind],'a') as f:
 					if not self.simulate:
@@ -2525,6 +2525,8 @@ class TransferCavity:
 
 				except:
 					pass
+
+		self.laslog_filenames[ind] = None
 
 
 
