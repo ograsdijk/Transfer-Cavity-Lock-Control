@@ -339,7 +339,7 @@ class SocketServerLocking:
         @property
         def data_server(self):
             return {
-                    'ReadValue':[self.master_err]+self.slave_err+self.frequency+self.lockpoint,
+                    'ReadValue':[self.master_locked_flag, self.master_err]+self.slave_locked_flags+self.slave_err+self.frequency+self.lockpoint,
                     'verification':'laser locking',
                     'info':self.device_name
                    }
