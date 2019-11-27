@@ -20,7 +20,7 @@ class Laser:
 		self.devID=dev_address
 
 	def __str__(self):
-		return self.port+": device "+self.devID
+		return self.port+": device "+self.devID+", "+self.get_name()
 
 	def get_central_wavelength(self):
 		resc,center=registerReadU32(self.port,self.devID,REG['Wavelength_center'],-1)
@@ -132,6 +132,13 @@ class Laser:
 		val='{0:016b}'.format(val)[::-1]
 		val=int(val[-1])
 		return val
+
+	def get_name(self):
+		rd,val=registerReadAscii(self.port,self.devID,REG['Name'],-1)
+		return val.decode('utf-8')
+
+	def write_name(self,name):
+		rd=registerWriteAscii(self.port,self.devID,REG['Name'],name,0,-1)
 
 
 #################################################################################################################

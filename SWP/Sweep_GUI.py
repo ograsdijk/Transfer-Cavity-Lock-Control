@@ -684,6 +684,7 @@ class TransferCavity:
 
 
 		self.lasers=lasers
+
 		if simulate:
 			self.lasers=[2,2]
 
@@ -953,7 +954,20 @@ class TransferCavity:
 		Lasers' frame. This one is also divided into subframes. Two of those frames are initialized and created,
 		although if there's only one laser connected, the bottom laser frame will be greyed out.
 		"""
-		self.laser_window=[LabelFrame(parent,text="Laser 1",fg=label_fg_color,bg=bg_color),LabelFrame(parent,text="Laser 2",fg=label_fg_color,bg=bg_color)]
+		if self.lasers[0].get_name()=="" or self.lasers[0].get_name()=="BASIK":
+			l1_name="Laser 1"
+		else:
+			l1_name=self.lasers[0].get_name()
+
+		if len(self.lasers)>1:
+			if self.lasers[1].get_name()=="" or self.lasers[1].get_name()=="BASIK":
+				l2_name="Laser 2"
+			else:
+				l2_name=self.lasers[1].get_name()
+		else:
+			l2_name="Laser 2"
+
+		self.laser_window=[LabelFrame(parent,text=l1_name,fg=label_fg_color,bg=bg_color),LabelFrame(parent,text=l2_name,fg=label_fg_color,bg=bg_color)]
 		self.laser_window[0].grid(row=3,column=1,sticky=W)
 		self.laser_window[1].grid(row=5,column=1,sticky=W)
 
@@ -1364,8 +1378,8 @@ class TransferCavity:
 		self.indicator_frame.grid_rowconfigure(2,minsize=2)
 		self.indicator_frame.grid_rowconfigure(4,minsize=2)
 
-		Label(self.indicator_frame,bg=bg_color,fg=inftext_color,text="Laser 1:",font="Arial 20 bold").grid(row=1,column=1)
-		Label(self.indicator_frame,bg=bg_color,fg=inftext_color,text="Laser 2:",font="Arial 20 bold").grid(row=3,column=1)
+		Label(self.indicator_frame,bg=bg_color,fg=inftext_color,text=l1_name+":",font="Arial 20 bold").grid(row=1,column=1)
+		Label(self.indicator_frame,bg=bg_color,fg=inftext_color,text=l2_name+":",font="Arial 20 bold").grid(row=3,column=1)
 
 
 		self.wvl_label1=Label(self.indicator_frame,bg=bg_color,fg=info_color,font="Arial 22 bold",text="")
@@ -1461,11 +1475,11 @@ class TransferCavity:
 
 		cav_d={"RMS":self.transfer_lock.rms_points,"LockThreshold":self.transfer_lock.master_rms_crit,"PeakCriterion":self.transfer_lock.master_peak_crit,"ScanTime":self.transfer_lock.daq_tasks.ao_scan.scan_time,"ScanSamples":self.transfer_lock.daq_tasks.ao_scan.n_samples,"ScanOffset":self.transfer_lock.daq_tasks.ao_scan.offset,"ScanAmplitude":self.transfer_lock.daq_tasks.ao_scan.amplitude,"PGain":self.lock.prop_gain[0],"IGain":self.lock.int_gain[0],"FSR":self.lock._FSR,"Wavelength":self.lock.get_master_wavelength(),"Lockpoint":self.lock.master_lockpoint,"MinVoltage":self.transfer_lock.daq_tasks.ao_scan.mn_voltage,"MaxVoltage":self.transfer_lock.daq_tasks.ao_scan.mx_voltage,"InputChannel":channel_number(self.transfer_lock.daq_tasks.get_scan_ai_channel()),"OutputChannel":channel_number(self.transfer_lock.daq_tasks.get_scan_ao_channel())}
 
-		laser1_d={"LockpointR":self.lock.slave_lockpoints[0],"LockpointMHz":self.lock.get_laser_lockpoint(0),"Wavelength":self.lasers[0].get_set_wavelength(),"PeakCriterion":self.transfer_lock.slave_peak_crits[0],"LockThreshold":self.transfer_lock.slave_rms_crits[0],"PGain":self.lock.prop_gain[1],"IGain":self.lock.int_gain[1],"MinVoltage":self.transfer_lock.daq_tasks.ao_laser.mn_voltages[0],"MaxVoltage":self.transfer_lock.daq_tasks.ao_laser.mx_voltages[0],"SetVoltage":self.transfer_lock.daq_tasks.ao_laser.voltages[0],"InputChannel":channel_number(self.transfer_lock.daq_tasks.get_laser_ai_channel(0)),"OutputChannel":channel_number(self.transfer_lock.daq_tasks.get_laser_ao_channel(0)),"PowerChannel":channel_number(self.transfer_lock.daq_tasks.get_laser_power_channel(0))}
+		laser1_d={"Name":self.lasers[0].get_name(),"LockpointR":self.lock.slave_lockpoints[0],"LockpointMHz":self.lock.get_laser_lockpoint(0),"Wavelength":self.lasers[0].get_set_wavelength(),"PeakCriterion":self.transfer_lock.slave_peak_crits[0],"LockThreshold":self.transfer_lock.slave_rms_crits[0],"PGain":self.lock.prop_gain[1],"IGain":self.lock.int_gain[1],"MinVoltage":self.transfer_lock.daq_tasks.ao_laser.mn_voltages[0],"MaxVoltage":self.transfer_lock.daq_tasks.ao_laser.mx_voltages[0],"SetVoltage":self.transfer_lock.daq_tasks.ao_laser.voltages[0],"InputChannel":channel_number(self.transfer_lock.daq_tasks.get_laser_ai_channel(0)),"OutputChannel":channel_number(self.transfer_lock.daq_tasks.get_laser_ao_channel(0)),"PowerChannel":channel_number(self.transfer_lock.daq_tasks.get_laser_power_channel(0))}
 
 		if len(self.lasers)>1:
 
-			laser2_d={"LockpointR":self.lock.slave_lockpoints[1],"LockpointMHz":self.lock.get_laser_lockpoint(1),"Wavelength":self.lasers[1].get_set_wavelength(),"PeakCriterion":self.transfer_lock.slave_peak_crits[1],"LockThreshold":self.transfer_lock.slave_rms_crits[1],"PGain":self.lock.prop_gain[2],"IGain":self.lock.int_gain[2],"MinVoltage":self.transfer_lock.daq_tasks.ao_laser.mn_voltages[1],"MaxVoltage":self.transfer_lock.daq_tasks.ao_laser.mx_voltages[1],"SetVoltage":self.transfer_lock.daq_tasks.ao_laser.voltages[1],"InputChannel":channel_number(self.transfer_lock.daq_tasks.get_laser_ai_channel(1)),"OutputChannel":channel_number(self.transfer_lock.daq_tasks.get_laser_ao_channel(1)),"PowerChannel":channel_number(self.transfer_lock.daq_tasks.get_laser_power_channel(1))}
+			laser2_d={"Name":self.lasers[1].get_name(),"LockpointR":self.lock.slave_lockpoints[1],"LockpointMHz":self.lock.get_laser_lockpoint(1),"Wavelength":self.lasers[1].get_set_wavelength(),"PeakCriterion":self.transfer_lock.slave_peak_crits[1],"LockThreshold":self.transfer_lock.slave_rms_crits[1],"PGain":self.lock.prop_gain[2],"IGain":self.lock.int_gain[2],"MinVoltage":self.transfer_lock.daq_tasks.ao_laser.mn_voltages[1],"MaxVoltage":self.transfer_lock.daq_tasks.ao_laser.mx_voltages[1],"SetVoltage":self.transfer_lock.daq_tasks.ao_laser.voltages[1],"InputChannel":channel_number(self.transfer_lock.daq_tasks.get_laser_ai_channel(1)),"OutputChannel":channel_number(self.transfer_lock.daq_tasks.get_laser_ao_channel(1)),"PowerChannel":channel_number(self.transfer_lock.daq_tasks.get_laser_power_channel(1))}
 
 			save_conf(flname,daq_d,wvm_d,cav_d,laser1_d,laser2_d)
 
@@ -2132,13 +2146,19 @@ class TransferCavity:
 			if len(Chs)!=len(set(Chs)):
 				raise Exception("Cannot use same channel for two devices.") #This will be caught by GUI logger.
 			else:
-				self.transfer_lock.daq_tasks.update_tasks([sc_ao,l1_ao,l2_ao],[m_ai,l1_ai,l2_ai],[l1_p,l2_p])
+				try:
+					self.transfer_lock.daq_tasks.update_tasks([sc_ao,l1_ao,l2_ao],[m_ai,l1_ai,l2_ai],[l1_p,l2_p])
+				except:
+					pass
 
 		else:
 			if len(Chs)!=len(set(Chs)):
 				raise Exception("Cannot use same channel for two devices.")
 			else:
-				self.transfer_lock.daq_tasks.update_tasks([sc_ao,l1_ao],[m_ai,l1_ai],[l1_p])
+				try:
+					self.transfer_lock.daq_tasks.update_tasks([sc_ao,l1_ao],[m_ai,l1_ai],[l1_p])
+				except:
+					pass
 
 		#The window is destroyed at the end.
 		self.cancel_daqtop()
@@ -3337,6 +3357,7 @@ class LaserConnect:
 
 
 		elif len(L)<3:
+			
 			self.caught_err.configure(text="")
 			s=ttk.Style()
 			s.element_create('Plain.Notebook.tab', "from", 'default')
@@ -3349,11 +3370,22 @@ class LaserConnect:
 
 			tabs=[]
 			las=[]
+
+
+			if len(L)>1 and self.config['LASER2']['Name']!='0':
+				if L[0].get_name()==self.config['LASER2']['Name'] or L[1].get_name()==self.config['LASER1']['Name']:
+					L[0],L[1]=L[1],L[0]
+					
+
 			for i in range(len(L)):
 				tabs.append(ttk.Frame(tab_ctrl,style='TFrame'))
 				self.add_status(2*i+4,i+1)
 			for i in range(len(L)):
-				tab_ctrl.add(tabs[i], text="Laser "+str(i+1))
+				if self.config['LASER'+str(i+1)]['Name']=='0':
+					tab_ctrl.add(tabs[i], text="Laser "+str(i+1))
+				else:
+					tab_ctrl.add(tabs[i], text=L[i].get_name())
+
 				try:
 					cfg_wvl=float(self.config['LASER'+str(i+1)]['Wavelength'])
 					las.append(LaserControl(tabs[i],self.status[i],L[i],cfg_wvl))
@@ -3368,6 +3400,7 @@ class LaserConnect:
 			self.con_button.configure(state="disabled")
 
 			pw=PlotWindow(self.plot_frame)
+
 			self.TC=TransferCavity(self.trans_frame,pw,L,self.config,self.sim)
 
 		else:
