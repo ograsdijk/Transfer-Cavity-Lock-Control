@@ -311,9 +311,10 @@ class InfluxDBCommunication(threading.Thread):
     """
 
     """
-    def __init__(self, host, port, username, password, dt):
+    def __init__(self, device, host, port, username, password, dt):
         threading.Thread.__init__(self)
         self.active = threading.Event()
+        self.device = device
 
         self.influxdb_client = InfluxDBClient(
                 host = host,
@@ -325,18 +326,20 @@ class InfluxDBCommunication(threading.Thread):
 
         self.dt = dt
 
-        col_names = ["cavity lock", "cavity error", "seed 1 lock",
+        self.col_names = ["cavity lock", "cavity error", "seed 1 lock",
                      "seed 2 lock", "seed 1 error", "seed 2 error", "seed 1 frequency",
                      "seed 2 frequency", "seed 1 lockpoint", "seed 2 lockpoint"]
 
     def run(self):
+        print('starting run loop')
         while self.active.is_set():
-            fields = dict( (key, val) for key, val in zip(col_names, self.data_server.values()))
+            fields = dict( (key, val) for key, val in zip(self.col_names, self.device.data_server.get('ReadValue'))
+                            if not np.isnan(val))
 
             json_body = [
                     {
-                        "measurement": "laser locking 1",
-                        "time": int(1000 * time.time())),
+                        "measurement": self.device.device_name,
+                        "time": int(1000 * time.time()),
                         "fields": fields,
                         }
                     ]
@@ -357,14 +360,14 @@ class NetworkIOLocking:
     Network IO for laser lock parameters
     """
     def __init__(self, host, port):
-        self.device_name = 'Laser Locking'
+        self.device_name = 'Laser Locking 1'
 
         self.master_locked_flag = False
         self.master_err = np.nan
-        self.slave_locked_flags = [None]*2
-        self.slave_err = [None]*2
-        self.slave_frequency = [None]*2
-        self.slave_lockpoint = [None]*2
+        self.slave_locked_flags = [np.nan]*2
+        self.slave_err = [np.nan]*2
+        self.slave_frequency = [np.nan]*2
+        self.slave_lockpoint = [np.nan]*2
 
         self.commands_server = {}
 
@@ -374,7 +377,7 @@ class NetworkIOLocking:
         self.thread_communication.start()
 
         self.thread_influxdb = InfluxDBCommunication(
-                self, "172.28.82.114", 8086, "bsmonitor", "molecules", 1
+                self, "172.28.82.114", 8086, "bsmonitor", "molecules", 5
             )
         self.thread_influxdb.setDaemon(True)
         self.thread_influxdb.start()
