@@ -17,7 +17,7 @@ from .Devices import *
 from .Data_acq import *
 from .Bristol import SocketClientBristol671A
 
-from .SocketServerLocking import *
+from .NetworkIOLocking import *
 
 
 """
@@ -652,7 +652,7 @@ class TransferCavity:
 
 	def __init__(self,parent,plt_frame,lasers,config,simulate):
 		# starting socket server for loggin data from external computers
-		self.socketserver = SocketServerLocking('', 65430)
+		self.networkio = NetworkIOLocking('', 65430)
 
 		#Neighbouring plot frame
 		self.plot_win=plt_frame
@@ -3357,7 +3357,7 @@ class LaserConnect:
 
 
 		elif len(L)<3:
-			
+
 			self.caught_err.configure(text="")
 			s=ttk.Style()
 			s.element_create('Plain.Notebook.tab', "from", 'default')
@@ -3375,7 +3375,7 @@ class LaserConnect:
 			if len(L)>1 and self.config['LASER2']['Name']!='0':
 				if L[0].get_name()==self.config['LASER2']['Name'] or L[1].get_name()==self.config['LASER1']['Name']:
 					L[0],L[1]=L[1],L[0]
-					
+
 
 			for i in range(len(L)):
 				tabs.append(ttk.Frame(tab_ctrl,style='TFrame'))

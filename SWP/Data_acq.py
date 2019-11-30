@@ -440,7 +440,7 @@ class TransferLock:
 					GUI_object.twopeak_status_cv.itemconfig(GUI_object.twopeak_status,fill=Colors['off_color'])
 
 				if self.master_locked_flag:
-					GUI_object.socketserver.master_locked_flag = True
+					GUI_object.networkio.master_locked_flag = True
 					GUI_object.cav_lock_status_cv.itemconfig(GUI_object.cav_lock_status,fill=Colors['on_color'])
 
 					if any(self.slave_locks_engaged):
@@ -459,23 +459,23 @@ class TransferLock:
 								else:
 									GUI_object.laser_lock_status_cv[i].itemconfig(GUI_object.laser_lock_status[i],fill=Colors['off_color'])
 				else:
-					GUI_object.socketserver.master_locked_flag = False
-					GUI_object.socketserver.master_err = np.nan
+					GUI_object.networkio.master_locked_flag = False
+					GUI_object.networkio.master_err = np.nan
 					GUI_object.cav_lock_status_cv.itemconfig(GUI_object.cav_lock_status,fill=Colors['off_color'])
 					for j in range(len(self.slave_locks_engaged)):
-						GUI_object.socketserver.slave_locked_flags[j] = False
-						GUI_object.socketserver.slave_err[j] = np.nan
-						GUI_object.socketserver.slave_frequency[j] = np.nan
-						GUI_object.socketserver.slave_lockpoint[j] = -GUI_object.lock.get_laser_abs_lockpoint(j)
+						GUI_object.networkio.slave_locked_flags[j] = False
+						GUI_object.networkio.slave_err[j] = np.nan
+						GUI_object.networkio.slave_frequency[j] = np.nan
+						GUI_object.networkio.slave_lockpoint[j] = -GUI_object.lock.get_laser_abs_lockpoint(j)
 
 			else:
-				GUI_object.socketserver.master_locked_flag = False
-				GUI_object.socketserver.master_err = np.nan
+				GUI_object.networkio.master_locked_flag = False
+				GUI_object.networkio.master_err = np.nan
 				for j in range(len(self.slave_locks_engaged)):
-					GUI_object.socketserver.slave_locked_flags[j] = False
-					GUI_object.socketserver.slave_err[j] = np.nan
-					GUI_object.socketserver.slave_frequency[j] = np.nan
-					GUI_object.socketserver.slave_lockpoint[j] = -GUI_object.lock.get_laser_abs_lockpoint(j)
+					GUI_object.networkio.slave_locked_flags[j] = False
+					GUI_object.networkio.slave_err[j] = np.nan
+					GUI_object.networkio.slave_frequency[j] = np.nan
+					GUI_object.networkio.slave_lockpoint[j] = -GUI_object.lock.get_laser_abs_lockpoint(j)
 
 			if self.master_lock_engaged and len(self.master_signal.peaks_x)==2:
 
@@ -484,7 +484,7 @@ class TransferLock:
 				GUI_object.plot_win.ax_err.set_ylim(min(self.master_err_history)-self.master_rms_crit/3, self.master_rms_crit/3+max(self.master_err_history))
 				GUI_object.plot_win.ax_err.set_xlim(min(X), max(X))
 
-				GUI_object.socketserver.master_err = self.master_err_history[-1]
+				GUI_object.networkio.master_err = self.master_err_history[-1]
 
 				if GUI_object.master_logging_set:
 
@@ -495,7 +495,7 @@ class TransferLock:
 
 				for j in range(len(self.slave_locks_engaged)):
 					if self.slave_locks_engaged[j]:
-						GUI_object.socketserver.slave_locked_flags[j] = True
+						GUI_object.networkio.slave_locked_flags[j] = True
 						Xs=np.linspace(0,len(self.slave_err_history[j])-1,len(self.slave_err_history[j]))
 						GUI_object.plot_win.slines[j].set_data(Xs,self.slave_err_history[j])
 						try:
@@ -507,9 +507,9 @@ class TransferLock:
 						except:
 							pass
 
-						GUI_object.socketserver.slave_err[j] = self.slave_err_history[j][-1]
-						GUI_object.socketserver.slave_frequency[j] = -GUI_object.lock.get_laser_abs_freq(j)
-						GUI_object.socketserver.slave_lockpoint[j] = -GUI_object.lock.get_laser_abs_lockpoint(j)
+						GUI_object.networkio.slave_err[j] = self.slave_err_history[j][-1]
+						GUI_object.networkio.slave_frequency[j] = -GUI_object.lock.get_laser_abs_freq(j)
+						GUI_object.networkio.slave_lockpoint[j] = -GUI_object.lock.get_laser_abs_lockpoint(j)
 
 						if GUI_object.laser_logging_set[j]:
 
@@ -526,16 +526,16 @@ class TransferLock:
 
 							self._slave_counters[j]+=1
 					else:
-						GUI_object.socketserver.slave_locked_flags[j] = False
-						GUI_object.socketserver.slave_err[j] = np.nan
-						GUI_object.socketserver.slave_frequency[j] = np.nan
-						GUI_object.socketserver.slave_lockpoint[j] = -GUI_object.lock.get_laser_abs_lockpoint(j)
+						GUI_object.networkio.slave_locked_flags[j] = False
+						GUI_object.networkio.slave_err[j] = np.nan
+						GUI_object.networkio.slave_frequency[j] = np.nan
+						GUI_object.networkio.slave_lockpoint[j] = -GUI_object.lock.get_laser_abs_lockpoint(j)
 			else:
 				for j in range(len(self.slave_locks_engaged)):
-					GUI_object.socketserver.slave_locked_flags[j] = False
-					GUI_object.socketserver.slave_err[j] = np.nan
-					GUI_object.socketserver.slave_frequency[j] = np.nan
-					GUI_object.socketserver.slave_lockpoint[j] = -GUI_object.lock.get_laser_abs_lockpoint(j)
+					GUI_object.networkio.slave_locked_flags[j] = False
+					GUI_object.networkio.slave_err[j] = np.nan
+					GUI_object.networkio.slave_frequency[j] = np.nan
+					GUI_object.networkio.slave_lockpoint[j] = -GUI_object.lock.get_laser_abs_lockpoint(j)
 
 			self._counter+=1
 

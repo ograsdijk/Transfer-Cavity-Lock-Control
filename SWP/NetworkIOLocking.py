@@ -17,6 +17,7 @@ import inspect
 from queue import Queue
 import numpy as np
 import copy
+from influxdb import InfluxDBClient
 
 #############################################
 # Class for server side messages
@@ -303,12 +304,57 @@ class socketServer(threading.Thread):
                         message.close()
 
 #############################################
-# Socket Device Server Class
+# InfluxDB class
 #############################################
 
-class SocketServerLocking:
+class InfluxDBCommunication(threading.Thread):
     """
-    Socket Server for laser lock parameters
+
+    """
+    def __init__(self, host, port, username, password, dt):
+        threading.Thread.__init__(self)
+        self.active = threading.Event()
+
+        self.influxdb_client = InfluxDBClient(
+                host = host,
+                port = port,
+                username = username,
+                password = password
+            )
+        self.influxdb_client.switch_database("lasers")
+
+        self.dt = dt
+
+        col_names = ["cavity lock", "cavity error", "seed 1 lock",
+                     "seed 2 lock", "seed 1 error", "seed 2 error", "seed 1 frequency",
+                     "seed 2 frequency", "seed 1 lockpoint", "seed 2 lockpoint"]
+
+    def run(self):
+        while self.active.is_set():
+            fields = dict( (key, val) for key, val in zip(col_names, self.data_server.values()))
+
+            json_body = [
+                    {
+                        "measurement": "laser locking 1",
+                        "time": int(1000 * time.time())),
+                        "fields": fields,
+                        }
+                    ]
+            try:
+                self.influxdb_client.write_points(json_body, time_precision='ms')
+            except Exception as err:
+                logging.warning("InfluxDB error: " + str(err))
+                logging.warning(traceback.format_exc())
+
+            time.sleep(self.dt)
+
+#############################################
+# Class for network communication with LaserLocking
+#############################################
+
+class NetworkIOLocking:
+    """
+    Network IO for laser lock parameters
     """
     def __init__(self, host, port):
         self.device_name = 'Laser Locking'
@@ -326,6 +372,13 @@ class SocketServerLocking:
         # closes communication thread upon closing of main thread
         self.thread_communication.setDaemon(True)
         self.thread_communication.start()
+
+        self.thread_influxdb = InfluxDBCommunication(
+                self, "172.28.82.114", 8086, "bsmonitor", "molecules", 1
+            )
+        self.thread_influxdb.setDaemon(True)
+        self.thread_influxdb.start()
+        self.thread_influxdb.active.set()
 
     @property
     def data_server(self):
