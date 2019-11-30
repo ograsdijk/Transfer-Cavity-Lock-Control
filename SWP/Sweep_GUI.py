@@ -15,7 +15,7 @@ import os
 from .Config import *
 from .Devices import *
 from .Data_acq import *
-from .Bristol import SocketClientBristol671A
+from .WavemeterFiberSwitch.WavemeterFiberswitchSocketClient import WavemeterFiberswitchSocketClient
 
 from .NetworkIOLocking import *
 
@@ -1979,13 +1979,10 @@ class TransferCavity:
 			self.adset_window=None
 
 			try:
-				sdc=SocketClientBristol671A.SocketClientBristol671A(self.host_ip,self.wvm_port)
+				sdc= WavemeterFiberswitchSocketClient(self.host_ip,self.wvm_port)
 				f=sdc.ReadValue()
 				if not isinstance(f, list):
 					raise Exception('Server at provided IP did not return a list.')
-				else:
-					if not isinstance(f[1],dict):
-						raise Exception('Server at provided IP did not return a dictionary inside the list.')
 			except Exception as e:
 				self.IP_label.config(text=self.host_ip,fg=off_color)
 				self.port_label.config(text=self.wvm_port,fg=off_color)
@@ -2966,15 +2963,12 @@ class TransferCavity:
 		self.wvm_L2=self.default_cfg['WAVEMETER']['Laser2']
 
 		try:
-			sdc=SocketClientBristol671A.SocketClientBristol671A(self.host_ip,self.wvm_port)
+			sdc=WavemeterFiberswitchSocketClient(self.host_ip,self.wvm_port)
 			f=sdc.ReadValue()
 
 			if not isinstance(f, list):
 				if not isinstance(f,dict):
 					raise Exception('Server at provided IP returned wrong format.')
-			else:
-				if not isinstance(f[1],dict):
-					raise Exception('Server at provided IP did not return a dictionary inside the list.')
 		except Exception as e:
 			self.IP_label.config(text=self.host_ip,fg=off_color)
 			self.port_label.config(text=self.wvm_port,fg=off_color)
@@ -2994,7 +2988,7 @@ class TransferCavity:
 
 		while self.wavemeter_updates:
 
-			sdc=SocketClientBristol671A.SocketClientBristol671A(self.host_ip,self.wvm_port)
+			sdc=WavemeterFiberswitchSocketClient(self.host_ip,self.wvm_port)
 
 			try:
 				f_dict=sdc.ReadValue()
@@ -3007,8 +3001,7 @@ class TransferCavity:
 				raise e
 				break
 			else:
-				self.real_frequency[0].append(f_dict[self.wvm_L1][1])
-
+				self.real_frequency[0].append(f_dict[self.wvm_L1])
 				wvm1=c/self.real_frequency[0][0]
 				if wvm1<1 or wvm1>100000:
 					wvm1=0
@@ -3020,7 +3013,7 @@ class TransferCavity:
 					p1=0
 
 				if len(self.lasers)>1 and len(list(f_dict.keys()))>1:
-					self.real_frequency[1].append(f_dict[self.wvm_L2][1])
+					self.real_frequency[1].append(f_dict[self.wvm_L2])
 					wvm2=c/self.real_frequency[1][0]
 					if wvm2<1 or wvm2>100000:
 						wvm2=0
