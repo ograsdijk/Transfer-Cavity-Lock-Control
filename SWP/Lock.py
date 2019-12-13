@@ -238,10 +238,6 @@ class Lock:
 	#Analogical function to the previous one. It uses the first detected peak of the slave laser. It returns the error in units of MHz.
 	def acquire_slave_signal(self,signal,ind):
 		if len(signal.peaks_x)>0:
-
-			prev=self.slave_errs_prev[ind]
-			prev_peak=self.prev_slave_peaks[ind]
-
 			self.slave_errs_prev[ind]=self.slave_errs[ind]
 			self.prev_slave_peaks[ind]=self.slave_peaks[ind]
 
@@ -262,13 +258,9 @@ class Lock:
 						self.slave_peaks[ind]=peak
 						self.slave_Rs[ind]=self.slave_lockpoints[ind]-err
 
-			#If suddenly error jumps to 0.7 FSR, all parameters are returned to previous values. If this happens more than 5 times,
-			#it is interpreted as a deliberate movement of the lockpoint and the loop continues.
-			if abs(self.slave_errs[ind]-self.slave_errs_prev[ind])*1000*self._slave_FSR[ind]>=0.7*1000*self._FSR and self._wrong_peak_counter[ind]<5:
+			if abs(self.slave_errs[ind]-self.slave_errs_prev[ind])*1000*self._slave_FSR[ind]>=0.9*1000*self._FSR and self._wrong_peak_counter[ind]<3:
 				self.slave_errs[ind]=self.slave_errs_prev[ind]
 				self.slave_peaks[ind]=self.prev_slave_peaks[ind]
-				self.slave_errs_prev[ind]=prev
-				self.prev_slave_peaks[ind]=prev_peak
 				self.slave_Rs[ind]=(self.master_peaks[0]-self.slave_peaks[ind])/(self.master_peaks[0]-self.master_peaks[1])
 				self._wrong_peak_counter[ind]+=1
 			else:
@@ -277,7 +269,7 @@ class Lock:
 
 			return self.slave_errs[ind]*1000*self._slave_FSR[ind]
 		else:
-			return self.slave_errs[ind]*1000*self._slave_FSR[ind]
+			return 0
 
 		
 	"""
