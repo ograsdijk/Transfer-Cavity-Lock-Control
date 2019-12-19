@@ -288,6 +288,7 @@ class socketServer(threading.Thread):
 
     def run(self):
         self.active.set()
+        logging.info('socketServer running')
         while self.active.is_set():
             events = self.sel.select(timeout = self.timeout)
             for key, mask in events:
@@ -331,7 +332,7 @@ class InfluxDBCommunication(threading.Thread):
                      "seed 2 frequency", "seed 1 lockpoint", "seed 2 lockpoint"]
 
     def run(self):
-        print('starting run loop')
+        logging.info('influxDB running')
         while self.active.is_set():
             fields = dict( (key, val) for key, val in zip(self.col_names, self.device.data_server.get('ReadValue'))
                             if not np.isnan(val))
