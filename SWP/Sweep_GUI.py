@@ -652,7 +652,7 @@ class TransferCavity:
 
 	def __init__(self,parent,plt_frame,lasers,config,simulate):
 		# starting socket server for loggin data from external computers
-		self.networkio = NetworkIOLocking('', 65430)
+		self.networkio = NetworkIOLocking(self, '', 65430)
 
 		#Neighbouring plot frame
 		self.plot_win=plt_frame

@@ -34,7 +34,7 @@ class ServerMessage:
     See https://realpython.com/python-sockets/#application-client-and-server
     for a more thorough explanation, most of the code is adapted from this.
     """
-    def __init__(self, selector, sock, addr, data, commands, timeout):
+    def __init__(self, obj, selector, sock, addr, data, timeout):
         self.selector = selector
         self.sock = sock
         self.addr = addr
@@ -45,8 +45,8 @@ class ServerMessage:
         self.request = None
         self.response_created = False
 
+        self.obj = obj
         self.data = data
-        self.commands = commands
         self.timeout = timeout
 
     def _set_selector_events_mask(self, mode):
@@ -123,19 +123,14 @@ class ServerMessage:
                 content = {"error": f'No match for "{query}".'}
         elif action == "command":
             command = self.request.get("value")
-            tstart = time.time()
-            self.commands.put(command)
-            while True:
-                if self.data["commandReturn"].get(command):
-                    content = {"result": self.data["commandReturn"].get(command)}
-                    del self.data["commandReturn"][command]
-                    break
-                # manual timeout if it takes to long to execute command
-                # subsequently returns to the client a message stating function
-                # execution took too much time
-                elif time.time() - tstart > self.timeout:
-                    content = {"result": (time.time(), command, "not executed, {0}s timeout".format(self.timeout))}
-                    break
+            try:
+                retval = eval('self.obj.{0}'.format(command))
+                if not retval is None:
+                    content = {"result": retval}
+                else:
+                    content = {"result": "command {} performed".format(action)}
+            except AttributeError:
+                content = {"error": "no match for {0}.".format(action)}
         elif action == "info":
             content = {"result":self.data['info']}
         else:
@@ -261,9 +256,9 @@ class socketServer(threading.Thread):
     """
     Handles communication with external clients in a separate thread.
     """
-    def __init__(self, device, host, port, timeout):
+    def __init__(self, communication, host, port, timeout):
         threading.Thread.__init__(self)
-        self.device = device
+        self.communication = communication
         self.host = ''
         self.timeout = float(timeout)
         self.port = int(port)
@@ -280,10 +275,10 @@ class socketServer(threading.Thread):
 
     def accept_wrapper(self, sock):
         conn, addr = sock.accept()  # Should be ready to read
-        logging.info("{0} accepted connection from".format(self.device.device_name), addr)
+        logging.info("{0} accepted connection from".format(self.communication.device_name), addr)
         conn.setblocking(False)
-        message = ServerMessage(self.sel, conn, addr, self.device.data_server,
-                                self.device.commands_server, self.timeout)
+        message = ServerMessage(self.communication.transfer_cavity, self.sel, conn, addr, self.communication.data_server,
+                                self.timeout)
         self.sel.register(conn, selectors.EVENT_READ, data=message)
 
     def run(self):
@@ -360,7 +355,7 @@ class NetworkIOLocking:
     """
     Network IO for laser lock parameters
     """
-    def __init__(self, host, port):
+    def __init__(self, transfer_cavity, host, port):
         self.device_name = 'Laser Locking 1'
 
         self.master_locked_flag = False
@@ -370,7 +365,7 @@ class NetworkIOLocking:
         self.slave_frequency = [np.nan]*2
         self.slave_lockpoint = [np.nan]*2
 
-        self.commands_server = {}
+        self.transfer_cavity = transfer_cavity
 
         self.thread_communication = socketServer(self, host, int(port), 2)
         # closes communication thread upon closing of main thread
