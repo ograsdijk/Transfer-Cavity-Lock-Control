@@ -591,7 +591,7 @@ class Signal:
 	def find_peaks(self,criterion=0.2,win_size=3,hs=10):
 
 		D=self.fltr.apply(self.smooth_y,1,self.dx)
-		self.der_y=D
+		self.der_y=self.fltr.apply(self.data_y,1,self.dx)
 		# D=self.fltr.apply(D,0,self.dx)
 		# D=self.fltr.moving_avg(D,half_size=hs)
 		self.smooth_der=D
@@ -612,8 +612,25 @@ class Signal:
 
 					a,b=np.polyfit(self.data_x[i-win_size:i+win_size],D[i-win_size:i+win_size],1)
 					points.append(-b/a)
+
 					skip=10*win_size
 
+		if len(points)==0:
+			D=self.der_y
+			skip=0
+			for i in range(int(0.2*len(D)),len(D)-win_size):
+
+				if skip>0:
+					skip-=1
+					continue
+
+				if D[i-1]<0 and D[i]>0:
+
+					if np.amax(self.data_y[i-win_size:i+win_size])>criterion*self.mx:
+
+						a,b=np.polyfit(self.data_x[i-win_size:i+win_size],D[i-win_size:i+win_size],1)
+						points.append(-b/a)
+						skip=10*win_size
 
 		self.peaks_x=np.array(points)
 

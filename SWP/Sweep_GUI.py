@@ -1476,7 +1476,8 @@ class TransferCavity:
 		cav_d={"RMS":self.transfer_lock.rms_points,"LockThreshold":self.transfer_lock.master_rms_crit,"PeakCriterion":self.transfer_lock.master_peak_crit,"ScanTime":self.transfer_lock.daq_tasks.ao_scan.scan_time,"ScanSamples":self.transfer_lock.daq_tasks.ao_scan.n_samples,"ScanOffset":self.transfer_lock.daq_tasks.ao_scan.offset,"ScanAmplitude":self.transfer_lock.daq_tasks.ao_scan.amplitude,"PGain":self.lock.prop_gain[0],"IGain":self.lock.int_gain[0],"FSR":self.lock._FSR,"Wavelength":self.lock.get_master_wavelength(),"Lockpoint":self.lock.master_lockpoint,"MinVoltage":self.transfer_lock.daq_tasks.ao_scan.mn_voltage,"MaxVoltage":self.transfer_lock.daq_tasks.ao_scan.mx_voltage,"InputChannel":channel_number(self.transfer_lock.daq_tasks.get_scan_ai_channel()),"OutputChannel":channel_number(self.transfer_lock.daq_tasks.get_scan_ao_channel())}
 
 		laser1_d={"Name":self.lasers[0].get_name(),"LockpointR":self.lock.slave_lockpoints[0],"LockpointMHz":self.lock.get_laser_lockpoint(0),"Wavelength":self.lasers[0].get_set_wavelength(),"PeakCriterion":self.transfer_lock.slave_peak_crits[0],"LockThreshold":self.transfer_lock.slave_rms_crits[0],"PGain":self.lock.prop_gain[1],"IGain":self.lock.int_gain[1],"MinVoltage":self.transfer_lock.daq_tasks.ao_laser.mn_voltages[0],"MaxVoltage":self.transfer_lock.daq_tasks.ao_laser.mx_voltages[0],"SetVoltage":self.transfer_lock.daq_tasks.ao_laser.voltages[0],"InputChannel":channel_number(self.transfer_lock.daq_tasks.get_laser_ai_channel(0)),"OutputChannel":channel_number(self.transfer_lock.daq_tasks.get_laser_ao_channel(0)),"PowerChannel":channel_number(self.transfer_lock.daq_tasks.get_laser_power_channel(0))}
-
+		print(self.lasers[0].get_name())
+		print(laser1_d)
 		if len(self.lasers)>1:
 
 			laser2_d={"Name":self.lasers[1].get_name(),"LockpointR":self.lock.slave_lockpoints[1],"LockpointMHz":self.lock.get_laser_lockpoint(1),"Wavelength":self.lasers[1].get_set_wavelength(),"PeakCriterion":self.transfer_lock.slave_peak_crits[1],"LockThreshold":self.transfer_lock.slave_rms_crits[1],"PGain":self.lock.prop_gain[2],"IGain":self.lock.int_gain[2],"MinVoltage":self.transfer_lock.daq_tasks.ao_laser.mn_voltages[1],"MaxVoltage":self.transfer_lock.daq_tasks.ao_laser.mx_voltages[1],"SetVoltage":self.transfer_lock.daq_tasks.ao_laser.voltages[1],"InputChannel":channel_number(self.transfer_lock.daq_tasks.get_laser_ai_channel(1)),"OutputChannel":channel_number(self.transfer_lock.daq_tasks.get_laser_ao_channel(1)),"PowerChannel":channel_number(self.transfer_lock.daq_tasks.get_laser_power_channel(1))}
@@ -1986,7 +1987,7 @@ class TransferCavity:
 			except Exception as e:
 				self.IP_label.config(text=self.host_ip,fg=off_color)
 				self.port_label.config(text=self.wvm_port,fg=off_color)
-				raise e
+				# raise e
 			else:
 				self.update_wavemeter_data_thread=threading.Thread(target=self.update_wvm_data)
 				self.IP_label.config(text=self.host_ip,fg=on_color)
@@ -2264,7 +2265,7 @@ class TransferCavity:
 	def move_slave_lck(self,num,ind):
 		if self.lock is not None:
 			self.lock.move_laser_lockpoint(num,ind)
-			self.laser_lckp[ind].config(text='{:.0f}'.format(-self.lock.get_laser_lockpoint(ind)))
+			self.laser_lckp[ind].config(text='{:.0f}'.format(self.lock.get_laser_lockpoint(ind)))
 			self.laser_r_lckp[ind].config(text="{:.3f}".format(self.lock.slave_lockpoints[ind]))
 
 
@@ -2676,7 +2677,7 @@ class TransferCavity:
 				self.lock.set_laser_lockpoint(fr,ind)
 				self.current_deviation[ind].config(text="{:.3f}".format(fr)+" MHz")
 				self.current_dev_process[ind].config(text="Locking...")
-				self.laser_lckp[ind].config(text='{:.0f}'.format(-self.lock.get_laser_lockpoint(ind)))
+				self.laser_lckp[ind].config(text='{:.0f}'.format(self.lock.get_laser_lockpoint(ind)))
 				self.laser_r_lckp[ind].config(text='{:.3f}'.format(self.lock.slave_lockpoints[ind]))
 
 				self.transfer_lock.slave_locked_flags[ind].wait(60)
@@ -2828,7 +2829,7 @@ class TransferCavity:
 
 
 			self.lock.set_laser_lockpoint(swstart,ind)
-			self.laser_lckp[ind].config(text='{:.0f}'.format(-self.lock.get_laser_lockpoint(ind)))
+			self.laser_lckp[ind].config(text='{:.0f}'.format(self.lock.get_laser_lockpoint(ind)))
 			self.laser_r_lckp[ind].config(text='{:.3f}'.format(self.lock.slave_lockpoints[ind]))
 
 			#Engaging the lock
@@ -2846,7 +2847,7 @@ class TransferCavity:
 						current=upper_bound
 						self.lock.set_laser_lockpoint(upper_bound,ind)
 						self.current_deviation[ind].config(text="{:.3f}".format(current)+" MHz")
-						self.laser_lckp[ind].config(text='{:.0f}'.format(-self.lock.get_laser_lockpoint(ind)))
+						self.laser_lckp[ind].config(text='{:.0f}'.format(self.lock.get_laser_lockpoint(ind)))
 						self.laser_r_lckp[ind].config(text='{:.3f}'.format(self.lock.slave_lockpoints[ind]))
 						self.sw_pr_var[ind].set((current-lower_bound)/interval*100)
 						self.transfer_lock.slave_locked_flags[ind].clear()
@@ -2864,7 +2865,7 @@ class TransferCavity:
 						current=lower_bound
 						self.lock.set_laser_lockpoint(lower_bound,ind)
 						self.current_deviation[ind].config(text="{:.3f}".format(current)+" MHz")
-						self.laser_lckp[ind].config(text='{:.0f}'.format(-self.lock.get_laser_lockpoint(ind)))
+						self.laser_lckp[ind].config(text='{:.0f}'.format(self.lock.get_laser_lockpoint(ind)))
 						self.laser_r_lckp[ind].config(text='{:.3f}'.format(self.lock.slave_lockpoints[ind]))
 						self.sw_pr_var[ind].set((current-lower_bound)/interval*100)
 						self.transfer_lock.slave_locked_flags[ind].clear()
@@ -2878,7 +2879,7 @@ class TransferCavity:
 
 
 				self.current_deviation[ind].config(text="{:.3f}".format(current)+" MHz")
-				self.laser_lckp[ind].config(text='{:.0f}'.format(-self.lock.get_laser_lockpoint(ind)))
+				self.laser_lckp[ind].config(text='{:.0f}'.format(self.lock.get_laser_lockpoint(ind)))
 				self.laser_r_lckp[ind].config(text='{:.3f}'.format(self.lock.slave_lockpoints[ind]))
 				self.sw_pr_var[ind].set((current-lower_bound)/interval*100)
 
@@ -2980,6 +2981,12 @@ class TransferCavity:
 			self.wavemeter_updates=True
 			self.wavemeter_upd_finished=Event()
 			self.update_wavemeter_data_thread.start()
+
+		if self.adset_window is not None:
+			self.adset_window.destroy()
+			self.adset_window=None
+
+
 
 
 	def update_wvm_data(self):
@@ -3097,7 +3104,7 @@ class TransferCavity:
 		try:
 			stp=float(self.laser_lsp[ind].get())
 			self.lock.set_laser_lockpoint(stp,ind)
-			self.laser_lckp[ind].config(text='{:.0f}'.format(-self.lock.get_laser_lockpoint(ind)))
+			self.laser_lckp[ind].config(text='{:.0f}'.format(self.lock.get_laser_lockpoint(ind)))
 			self.laser_r_lckp[ind].config(text='{:.3f}'.format(self.lock.slave_lockpoints[ind]))
 		except ValueError:
 			pass
@@ -3335,11 +3342,14 @@ class LaserConnect:
 
 
 		else:
-			self.lab0.destroy()
-			self.lab1.destroy()
-			self.lab2.destroy()
-			self.las1_opt.destroy()
-			self.las2_opt.destroy()
+			try:
+				self.lab0.destroy()
+				self.lab1.destroy()
+				self.lab2.destroy()
+				self.las1_opt.destroy()
+				self.las2_opt.destroy()
+			except:
+				pass
 
 
 		if len(L)==0:
@@ -3370,14 +3380,20 @@ class LaserConnect:
 					L[0],L[1]=L[1],L[0]
 
 
+
+			# for i in range(len(L)):
+			# 	tabs.append(ttk.Frame(tab_ctrl,style='TFrame'))
+			# 	self.add_status(2*i+4,i+1)
 			for i in range(len(L)):
+
 				tabs.append(ttk.Frame(tab_ctrl,style='TFrame'))
-				self.add_status(2*i+4,i+1)
-			for i in range(len(L)):
+
 				if self.config['LASER'+str(i+1)]['Name']=='0':
 					tab_ctrl.add(tabs[i], text="Laser "+str(i+1))
+					self.add_status(2*i+4,i+1,"Laser "+str(i+1))
 				else:
 					tab_ctrl.add(tabs[i], text=L[i].get_name())
+					self.add_status(2*i+4,i+1,L[i].get_name())
 
 				try:
 					cfg_wvl=float(self.config['LASER'+str(i+1)]['Wavelength'])
@@ -3399,51 +3415,61 @@ class LaserConnect:
 		else:
 			#If there are more than 2 lasers connected to the computer, user has to choose 2 from the list.
 
-			self.caught_err.configure(text="More than two devices \n have been detected. \n Please choose up to 2 \n to connect.")
-			self.con_button.configure(state="disabled")
-
-			self.lab0=Label(self.parent,text="Choose lasers:",font="Arial 10 bold")
-			self.lab0.grid(row=5,column=1)
-			self.lab1=Label(self.parent,text="Laser 1:",font="Arial 10")
-			self.lab1.grid(row=6,column=1,sticky=N)
-			self.lab2=Label(self.parent,text="Laser 2:",font="Arial 10")
-			self.lab2.grid(row=8,column=1,sticky=N)
-
-			self.Llist=[str(l) for l in L]
-			self.Lrem=self.Llist+["None"]
-
-			self.las1=StringVar()
-			self.las1_opt=OptionMenu(self.parent,self.las1,*self.Llist)
-			self.las1_opt.grid(row=6,column=1,sticky=S)
-			self.las1_opt.config(bg=button_bg_color,fg=label_fg_color,font="Arial 10 bold",highlightbackground=bg_color)
-			self.las1.set("None")
-			self.las1.trace("w",self.laser_choice_update)
-
-			self.las2=StringVar()
-			self.las2_opt=OptionMenu(self.parent,self.las2,*self.Lrem)
-			self.las2_opt.grid(row=8,column=1,sticky=S)
-			self.las2.set("None")
-			self.las2_opt.config(state="disabled")
-			self.las2_opt.config(bg=button_bg_color,fg=label_fg_color,font="Arial 10 bold",highlightbackground=bg_color)
-			self.las2.trace("w",self.laser_choice_update)
-
 			self.L_to_connect=[]
-			self.L=L
+			for l in L:
+				if l.get_name()==self.config['LASER2']['Name'] or l.get_name()==self.config['LASER1']['Name']:
+					self.L_to_connect.append(l)
+			if len(self.L_to_connect)>0:
+				self.initialize(L=self.L_to_connect)
+			else:
+				self.caught_err.configure(text="More than two devices \n have been detected. \n Please choose up to 2 \n to connect.")
+				self.con_button.configure(state="disabled")
+
+				self.lab0=Label(self.parent,text="Choose lasers:",font="Arial 10 bold",bg=bg_color)
+				self.lab0.grid(row=5,column=1)
+				self.lab1=Label(self.parent,text="Laser 1:",font="Arial 10",bg=bg_color)
+				self.lab1.grid(row=6,column=1,sticky=N)
+				self.lab2=Label(self.parent,text="Laser 2:",font="Arial 10",bg=bg_color)
+				self.lab2.grid(row=8,column=1,sticky=N)
+
+				self.Llist=[str(l) for l in L]
+				self.Lrem=self.Llist+["None"]
+
+				self.las1=StringVar()
+				self.las1_opt=OptionMenu(self.parent,self.las1,*self.Llist)
+				self.las1_opt.grid(row=6,column=1,sticky=S)
+				self.las1_opt.config(bg=button_bg_color,fg=label_fg_color,font="Arial 10 bold",highlightbackground=bg_color)
+				self.las1.set("None")
+				self.las1.trace("w",self.laser_choice_update)
+
+				self.las2=StringVar()
+				self.las2_opt=OptionMenu(self.parent,self.las2,*self.Lrem)
+				self.las2_opt.grid(row=8,column=1,sticky=S)
+				self.las2.set("None")
+				self.las2_opt.config(state="disabled")
+				self.las2_opt.config(bg=button_bg_color,fg=label_fg_color,font="Arial 10 bold",highlightbackground=bg_color)
+				self.las2.trace("w",self.laser_choice_update)
+
+				self.L=L
 
 
 	#Helper function updating choice lists.
 	def laser_choice_update(self,*args):
 		if self.las1.get()!="None":
+			if self.las1.get()==self.las2.get():
+				self.las2.set("None")
 			self.L_to_connect=[l for l in self.L if str(l)==self.las1.get() or str(l)==self.las2.get()]
 			self.con_button.config(state="normal",command=lambda:self.initialize(L=self.L_to_connect))
 			self.las2_opt.config(state="normal")
-			self.las2.set("None")
+			self.Lrem=[str(l) for l in self.L if str(l)!=self.las1.get()]
+
+
 
 
 	#Helper function creating small indicators
-	def add_status(self,rw,ind):
+	def add_status(self,rw,ind,name):
 
-		cl=Label(self.parent,text="Laser "+str(ind),font="Arial 12 bold",bg=bg_color,fg=label_fg_color)
+		cl=Label(self.parent,text=name,font="Arial 12 bold",bg=bg_color,fg=label_fg_color)
 		cl.grid(row=rw,column=1,sticky=W)
 		cv=Canvas(self.parent,height=30,width=30,bg=bg_color,highlightbackground=bg_color)
 		cv.grid(row=rw,column=1,sticky=E)
