@@ -196,11 +196,11 @@ class Lock:
 
 
 	def get_laser_local_freq(self,ind):
-		return (self.slave_Rs[ind]-self.zero_slave_lockpoints[ind])*self._slave_FSR[ind]*1000
+		return -(self.slave_Rs[ind]-self.zero_slave_lockpoints[ind])*self._slave_FSR[ind]*1000
 
 
 	def get_laser_abs_freq(self,ind):
-		return self.slave_sectors[ind]*self._FSR*1000+(self.slave_Rs[ind]-self.zero_slave_lockpoints[ind])*self._slave_FSR[ind]*1000
+		return self.slave_sectors[ind]*self._FSR*1000-(self.slave_Rs[ind]-self.zero_slave_lockpoints[ind])*self._slave_FSR[ind]*1000
 
 
 	def adjust_gains(self,prop,integral):
@@ -231,6 +231,7 @@ class Lock:
 
 			#We also calculate the interval between the peaks.
 			self.interval=(signal.peaks_x[-1]-signal.peaks_x[0])
+
 
 		return self.master_err/self.interval*self._FSR*1000
 

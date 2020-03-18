@@ -2973,7 +2973,7 @@ class TransferCavity:
 		except Exception as e:
 			self.IP_label.config(text=self.host_ip,fg=off_color)
 			self.port_label.config(text=self.wvm_port,fg=off_color)
-			raise e
+			# raise e
 		else:
 			self.update_wavemeter_data_thread=threading.Thread(target=self.update_wvm_data)
 			self.IP_label.config(text=self.host_ip,fg=on_color)

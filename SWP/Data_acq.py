@@ -7,6 +7,7 @@ import logging
 import h5py
 from threading import Thread, Event
 from time import sleep
+from scipy.optimize import curve_fit
 
 from .DAQ_tasks import *
 from .Lock import *
@@ -134,7 +135,7 @@ class TransferLock:
 	def obtain_master_signal(self):
 		try:
 			self.master_signal=Signal(self.daq_tasks.time_samples,self.daq_tasks.PD_data[0],self.filter)
-			self.master_signal.find_peaks(criterion=self.master_peak_crit,win_size=self.daq_tasks.ao_scan.n_samples//200)
+			self.master_signal.find_peaks(criterion=self.master_peak_crit,win_size=(self.daq_tasks.ao_scan.n_samples//400))
 		except Exception as e:
 			log.warning(e)
 
@@ -142,7 +143,7 @@ class TransferLock:
 	def obtain_slave_signal(self,ind):
 		try:
 			self.slave_signals[ind]=Signal(self.daq_tasks.time_samples,self.daq_tasks.PD_data[ind+1],self.filter)
-			self.slave_signals[ind].find_peaks(criterion=self.slave_peak_crits[ind],win_size=self.daq_tasks.ao_scan.n_samples//200)
+			self.slave_signals[ind].find_peaks(criterion=self.slave_peak_crits[ind],win_size=(self.daq_tasks.ao_scan.n_samples//400))
 		except Exception as e:
 			log.warning(e)
 
@@ -415,6 +416,12 @@ class TransferLock:
 
 			for i in range(len(self.daq_tasks.PD_data)):
 				GUI_object.plot_win.all_lines[i].set_data(self.daq_tasks.time_samples,self.daq_tasks.PD_data[i])
+				## plotting smoothed and derivative of master peak
+				# try:
+				# 	GUI_object.plot_win.all_lines[1].set_data(self.daq_tasks.time_samples,self.master_signal.smooth_der)
+				# 	GUI_object.plot_win.all_lines[2].set_data(self.daq_tasks.time_samples,self.master_signal.smooth_y)
+				# except:
+				# 	pass
 				if i==0:
 					GUI_object.plot_win.all_lines[i+3].set_data([self.lock.master_lockpoint]*2,[-10,10])
 				else:
@@ -466,7 +473,7 @@ class TransferLock:
 						GUI_object.networkio.slave_locked_flags[j] = False
 						GUI_object.networkio.slave_err[j] = np.nan
 						GUI_object.networkio.slave_frequency[j] = np.nan
-						GUI_object.networkio.slave_lockpoint[j] = -GUI_object.lock.get_laser_abs_lockpoint(j)
+						GUI_object.networkio.slave_lockpoint[j] = GUI_object.lock.get_laser_abs_lockpoint(j)
 
 			else:
 				GUI_object.networkio.master_locked_flag = False
@@ -475,7 +482,7 @@ class TransferLock:
 					GUI_object.networkio.slave_locked_flags[j] = False
 					GUI_object.networkio.slave_err[j] = np.nan
 					GUI_object.networkio.slave_frequency[j] = np.nan
-					GUI_object.networkio.slave_lockpoint[j] = -GUI_object.lock.get_laser_abs_lockpoint(j)
+					GUI_object.networkio.slave_lockpoint[j] = GUI_object.lock.get_laser_abs_lockpoint(j)
 
 			if self.master_lock_engaged and len(self.master_signal.peaks_x)==2:
 
@@ -508,16 +515,16 @@ class TransferLock:
 							pass
 
 						GUI_object.networkio.slave_err[j] = self.slave_err_history[j][-1]
-						GUI_object.networkio.slave_frequency[j] = -GUI_object.lock.get_laser_abs_freq(j)
-						GUI_object.networkio.slave_lockpoint[j] = -GUI_object.lock.get_laser_abs_lockpoint(j)
+						GUI_object.networkio.slave_frequency[j] = GUI_object.lock.get_laser_abs_freq(j)
+						GUI_object.networkio.slave_lockpoint[j] = GUI_object.lock.get_laser_abs_lockpoint(j)
 
 						if GUI_object.laser_logging_set[j]:
 
 
 							GUI_object.slave_time_temp[j].put(time()-GUI_object.lt_start[j])
 							GUI_object.slave_err_temp[j].put(self.slave_err_history[j][-1])
-							GUI_object.slave_rfreq_temp[j].put(-GUI_object.lock.get_laser_abs_freq(j))
-							GUI_object.slave_lfreq_temp[j].put(-GUI_object.lock.get_laser_abs_lockpoint(j))
+							GUI_object.slave_rfreq_temp[j].put(GUI_object.lock.get_laser_abs_freq(j))
+							GUI_object.slave_lfreq_temp[j].put(GUI_object.lock.get_laser_abs_lockpoint(j))
 							GUI_object.slave_rr_temp[j].put(GUI_object.lock.slave_Rs[j])
 							GUI_object.slave_lr_temp[j].put(GUI_object.lock.slave_lockpoints[j])
 							GUI_object.slave_pow_temp[j].put(1000*np.mean(self.daq_tasks.power_PDs.power[j]))
@@ -529,13 +536,13 @@ class TransferLock:
 						GUI_object.networkio.slave_locked_flags[j] = False
 						GUI_object.networkio.slave_err[j] = np.nan
 						GUI_object.networkio.slave_frequency[j] = np.nan
-						GUI_object.networkio.slave_lockpoint[j] = -GUI_object.lock.get_laser_abs_lockpoint(j)
+						GUI_object.networkio.slave_lockpoint[j] = GUI_object.lock.get_laser_abs_lockpoint(j)
 			else:
 				for j in range(len(self.slave_locks_engaged)):
 					GUI_object.networkio.slave_locked_flags[j] = False
 					GUI_object.networkio.slave_err[j] = np.nan
 					GUI_object.networkio.slave_frequency[j] = np.nan
-					GUI_object.networkio.slave_lockpoint[j] = -GUI_object.lock.get_laser_abs_lockpoint(j)
+					GUI_object.networkio.slave_lockpoint[j] = GUI_object.lock.get_laser_abs_lockpoint(j)
 
 			self._counter+=1
 
@@ -564,7 +571,7 @@ class Signal:
 		self.data_x=datax
 		self.data_y=datay-np.mean(datay[int(len(datay)/5):])
 		self.dx=datax[1]-datax[0]
-		self.mx=np.max(self.data_y)
+		self.mx=np.max(self.data_y[int(0.25*len(datay)):])
 		# self.smooth_y=fltr.apply(datay,0,datax[1]-datax[0])
 		self.smooth_y=fltr.peak_filter(self.data_y)
 		self.fltr=fltr
@@ -588,19 +595,19 @@ class Signal:
 	crossing from the fit. 14 points used for a fit works very well for 1000 points per scan and peaks that are not extremely
 	narrow. This can be changed if necessary. Once the peak is found, the loop is skipped by "win_size".
 	"""
-	def find_peaks(self,criterion=0.2,win_size=3,hs=10):
+	def find_peaks(self,criterion=0.25,win_size=5,hs=10):
 
 		D=self.fltr.apply(self.smooth_y,1,self.dx)
 		self.der_y=self.fltr.apply(self.data_y,1,self.dx)
 		# D=self.fltr.apply(D,0,self.dx)
-		# D=self.fltr.moving_avg(D,half_size=hs)
+		D=self.fltr.moving_avg(D,half_size=2)
 		self.smooth_der=D
 
 		points=[]
 		skip=0
 
-		#We discard/ignore first 20% of the data. Real scan introduces terrible noise there.
-		for i in range(int(0.2*len(D)),len(D)-win_size):
+		#We discard/ignore first 25% of the data. Real scan introduces terrible noise there.
+		for i in range(int(0.25*len(D)),len(D)-win_size):
 
 			if skip>0:
 				skip-=1
@@ -609,16 +616,15 @@ class Signal:
 			if D[i-1]<0 and D[i]>0:
 
 				if np.amax(self.data_y[i-win_size:i+win_size])>criterion*self.mx:
-
 					a,b=np.polyfit(self.data_x[i-win_size:i+win_size],D[i-win_size:i+win_size],1)
 					points.append(-b/a)
 
-					skip=10*win_size
+					skip=20*win_size
 
 		if len(points)==0:
 			D=self.der_y
 			skip=0
-			for i in range(int(0.2*len(D)),len(D)-win_size):
+			for i in range(int(0.25*len(D)),len(D)-win_size):
 
 				if skip>0:
 					skip-=1
@@ -630,7 +636,7 @@ class Signal:
 
 						a,b=np.polyfit(self.data_x[i-win_size:i+win_size],D[i-win_size:i+win_size],1)
 						points.append(-b/a)
-						skip=10*win_size
+						skip=20*win_size
 
 		self.peaks_x=np.array(points)
 
@@ -644,6 +650,8 @@ class Signal:
 		f=interpolate.interp1d(self.data_x,self.smooth_y)
 
 		self.peaks_y=f(self.peaks_x)
+
+
 
 
 #################################################################################################################
@@ -669,7 +677,7 @@ class Filter:
 
 		return np.convolve(signal,C,"same")
 
-	def moving_avg(self,data,half_size=2):
+	def moving_avg(self,data,half_size=3):
 
 		return np.divide(np.convolve(data,np.ones(2*half_size+1),"same"),2*half_size+1)
 

@@ -25,6 +25,7 @@ class WavemeterFiberswitchSocketClient:
         message = ClientMessage(self.sel, self.sock, (self.host, self.sock), request)
         events = selectors.EVENT_READ | selectors.EVENT_WRITE
         self.sel.register(self.sock, events, data=message)
+        # logging.warning('send request')
         try:
             while True:
                 events = self.sel.select(timeout=1)
