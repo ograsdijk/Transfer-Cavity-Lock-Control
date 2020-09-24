@@ -443,7 +443,7 @@ class LaserControl:
 
 
 	"""
-	That's the function that's run in the update thread. It collcets data directly from the laser (every 300ms)
+	That's the function that's run in the update thread. It collects data directly from the laser (every 300ms)
 	and puts those obtained parameters into a queue.
 
 	"""
@@ -640,7 +640,7 @@ class LaserControl:
 """
 The following class describes the pane that is used to control the transfer cavity. It controls scan parameters,
 locking parameters, lockpoints of the master and slave lasers; allows sweeping the frequency within the ~GHz
-range; controlls the lasers and cavity through NI DAQs, and also controlls options associated with the DAQ.
+range; controls the lasers and cavity through NI DAQs, and also controls options associated with the DAQ.
 """
 
 class TransferCavity:

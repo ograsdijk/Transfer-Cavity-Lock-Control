@@ -51,7 +51,7 @@ class Lock:
 			ts - position (time of arrival) of the peak of the slave laser
 		then:
 			R= (ts-t1)/(t2-t1)
-		This parameter can be negative or bigeer than 1.
+		This parameter can be negative or bigger than 1.
 		"""
 		self.slave_Rs=[0]*len(wvls)
 		self.slave_sectors=[0]*len(wvls)
