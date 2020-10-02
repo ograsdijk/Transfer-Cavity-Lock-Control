@@ -388,3 +388,6 @@ class NetworkIOLocking:
                 'verification':'laser locking',
                 'info':self.device_name
                }
+    
+    def set_laser_lockpoint(self,laser,lockpoint):
+        self.transfer_cavity.lock.set_laser_lockpoint(lockpoint, laser)
