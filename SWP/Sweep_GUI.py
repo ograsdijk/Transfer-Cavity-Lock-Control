@@ -3109,6 +3109,11 @@ class TransferCavity:
 		except ValueError:
 			pass
 
+	def set_laser_lockpoint(self,stp,ind):
+		self.lock.set_laser_lockpoint(stp,ind)
+		self.laser_lckp[ind].config(text='{:.0f}'.format(self.lock.get_laser_lockpoint(ind)))
+		self.laser_r_lckp[ind].config(text='{:.3f}'.format(self.lock.slave_lockpoints[ind]))
+
 
 	#Method that begins the scan. The scan happenes in a separate thread and this function creates it and starts it.
 	def start_scanning(self):
