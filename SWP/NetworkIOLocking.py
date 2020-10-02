@@ -128,9 +128,9 @@ class ServerMessage:
                 if not retval is None:
                     content = {"result": retval}
                 else:
-                    content = {"result": "command {} performed".format(action)}
+                    content = {"result": "command {} performed".format(command)}
             except AttributeError:
-                content = {"error": "no match for {0}.".format(action)}
+                content = {"error": "no match for {0}.".format(command)}
         elif action == "info":
             content = {"result":self.data['info']}
         else:
