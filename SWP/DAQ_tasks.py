@@ -372,6 +372,7 @@ class Scan:
 
 		#These are the points that will be writting to the DAQ (and then to cavity's piezo)
 		self.scan_points=np.linspace(self.offset,self.scan_end,num=self.n_samples)
+		# self.scan_points=np.linspace(self.scan_end,self.offset,num=self.n_samples)
 
 		self.scan_step=self.scan_points[1]-self.scan_points[0]
 
@@ -419,6 +420,7 @@ class Scan:
 		self.scan_end=offset+self.amplitude
 
 		self.scan_points=np.linspace(self.offset,self.scan_end,num=self.n_samples)
+		# self.scan_points=np.linspace(self.scan_end,self.offset,num=self.n_samples)
 
 
 	#Moving scanning offset. It has to move all the scanning points.
@@ -433,6 +435,7 @@ class Scan:
 		self.scan_end=self.offset+self.amplitude
 
 		self.scan_points=np.linspace(self.offset,self.scan_end,num=self.n_samples)
+		# self.scan_points=np.linspace(self.scan_end,self.offset,num=self.n_samples)
 
 
 #################################################################################################################

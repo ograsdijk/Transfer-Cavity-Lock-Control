@@ -3333,7 +3333,6 @@ class LaserConnect:
 
 	#Method that's called to initialize the rest of GUI and connect the lasers.
 	def initialize(self,L=None):
-
 		if L is None:
 
 			self.cfg_label.destroy()
@@ -3364,7 +3363,6 @@ class LaserConnect:
 
 
 		elif len(L)<3:
-
 			self.caught_err.configure(text="")
 			s=ttk.Style()
 			s.element_create('Plain.Notebook.tab', "from", 'default')
@@ -3457,8 +3455,6 @@ class LaserConnect:
 				self.las2.trace("w",self.laser_choice_update)
 
 				self.L=L
-				print(3)
-
 
 	#Helper function updating choice lists.
 	def laser_choice_update(self,*args):

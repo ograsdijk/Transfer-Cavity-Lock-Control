@@ -5,6 +5,7 @@ import math
 import queue
 import logging
 import h5py
+import ctypes
 from threading import Thread, Event
 from time import sleep
 
@@ -405,28 +406,44 @@ class TransferLock:
 		self.daq_tasks.ao_scan.perform_scan(False)
 		self.daq_tasks.ao_scan.dq_task.start()
 
+		refresh_rate = 30 # Hz
+		refresh_time = 1/refresh_rate
+		tstart = time()
+		refresh_plots = True
+		refresh_gui = True
+
 		while self._scan_flag:
 
 			self._scan_finished.clear()
 
 			ts=time()
 
+			current_res = ctypes.c_ulong()
+			# units are 100 ns, set windows timer resolution to be 1 ms.
+			ctypes.windll.ntdll.NtSetTimerResolution(10000, True, ctypes.byref(current_res))
+
 			self.daq_tasks.scan_and_acquire(self._scan_finished)
 
 			self._scan_finished.wait()
 			self._scan_frequency.append(1/(time()-ts))
 
+			if time()-tstart >= refresh_plots:
+				refresh_plots = True
+				refresh_gui = True
+				tstart = time()
+
 
 			GUI_object.real_scfr.config(text='{:.1f}'.format(np.mean(list(self._scan_frequency))))
 
-			for i in range(len(self.daq_tasks.PD_data)):
-				GUI_object.plot_win.all_lines[i].set_data(self.daq_tasks.time_samples,self.daq_tasks.PD_data[i])
-				if i==0:
-					GUI_object.plot_win.all_lines[i+3].set_data([self.lock.master_lockpoint]*2,[-10,10])
-				else:
-					GUI_object.plot_win.all_lines[i+3].set_data([self.lock.slave_lockpoints[i-1]*self.lock.interval+self.lock.master_lockpoint]*2,[-10,10])
-			GUI_object.plot_win.ax.set_xlim(self.daq_tasks.ao_scan.scan_time*0.2, self.daq_tasks.ao_scan.scan_time*1.01)
-			GUI_object.plot_win.ax.set_ylim(np.amin(self.daq_tasks.PD_data)-0.05, np.amax(self.daq_tasks.PD_data)+0.2)
+			if refresh_plots:
+				for i in range(len(self.daq_tasks.PD_data)):
+					GUI_object.plot_win.all_lines[i].set_data(self.daq_tasks.time_samples,self.daq_tasks.PD_data[i])
+					if i==0:
+						GUI_object.plot_win.all_lines[i+3].set_data([self.lock.master_lockpoint]*2,[-10,10])
+					else:
+						GUI_object.plot_win.all_lines[i+3].set_data([self.lock.slave_lockpoints[i-1]*self.lock.interval+self.lock.master_lockpoint]*2,[-10,10])
+				GUI_object.plot_win.ax.set_xlim(self.daq_tasks.ao_scan.scan_time*0.2, self.daq_tasks.ao_scan.scan_time*1.01)
+				GUI_object.plot_win.ax.set_ylim(np.amin(self.daq_tasks.PD_data)-0.05, np.amax(self.daq_tasks.PD_data)+0.2)
 
 			if self.master_lock_engaged:
 
@@ -434,20 +451,22 @@ class TransferLock:
 
 				if len(self.master_signal.peaks_x)==2:
 
-					GUI_object.twopeak_status_cv.itemconfig(GUI_object.twopeak_status,fill=Colors['on_color'])
+					if refresh_gui:
+						GUI_object.twopeak_status_cv.itemconfig(GUI_object.twopeak_status,fill=Colors['on_color'])
 
 					self.lock_master()
 
 					self._lck_adjust_fin.wait()
-
-					GUI_object.rms_cav.config(text="{:.3f}".format(self.master_err_rms))
-					GUI_object.real_scoff.config(text='{:.2f}'.format(self.daq_tasks.ao_scan.offset))
+					if refresh_gui:
+						GUI_object.rms_cav.config(text="{:.3f}".format(self.master_err_rms))
+						GUI_object.real_scoff.config(text='{:.2f}'.format(self.daq_tasks.ao_scan.offset))
 				else:
-					GUI_object.twopeak_status_cv.itemconfig(GUI_object.twopeak_status,fill=Colors['off_color'])
+					if refresh_gui:
+						GUI_object.twopeak_status_cv.itemconfig(GUI_object.twopeak_status,fill=Colors['off_color'])
 
 				if self.master_locked_flag:
-
-					GUI_object.cav_lock_status_cv.itemconfig(GUI_object.cav_lock_status,fill=Colors['on_color'])
+					if refresh_gui:
+						GUI_object.cav_lock_status_cv.itemconfig(GUI_object.cav_lock_status,fill=Colors['on_color'])
 
 					if any(self.slave_locks_engaged):
 						for i in range(len(self.slave_locks_engaged)):
@@ -456,58 +475,60 @@ class TransferLock:
 								self.lock_laser(i)
 								self._slck_adjust_fin[i].wait()
 
-								GUI_object.rms_laser[i].config(text="{:.2f}".format(self.slave_err_rms[i]))
-								GUI_object.app_volt[i].config(text='{:.3f}'.format(self.daq_tasks.ao_laser.voltages[i]))
-								GUI_object.laser_r[i].config(text='{:.3f}'.format(GUI_object.lock.slave_Rs[i]))
+								if refresh_gui:
+									GUI_object.rms_laser[i].config(text="{:.2f}".format(self.slave_err_rms[i]))
+									GUI_object.app_volt[i].config(text='{:.3f}'.format(self.daq_tasks.ao_laser.voltages[i]))
+									GUI_object.laser_r[i].config(text='{:.3f}'.format(GUI_object.lock.slave_Rs[i]))
 
-								if self.slave_locked_flags[i].is_set():
-									GUI_object.laser_lock_status_cv[i].itemconfig(GUI_object.laser_lock_status[i],fill=Colors['on_color'])
-								else:
-									GUI_object.laser_lock_status_cv[i].itemconfig(GUI_object.laser_lock_status[i],fill=Colors['off_color'])
+									if self.slave_locked_flags[i].is_set():
+										GUI_object.laser_lock_status_cv[i].itemconfig(GUI_object.laser_lock_status[i],fill=Colors['on_color'])
+									else:
+										GUI_object.laser_lock_status_cv[i].itemconfig(GUI_object.laser_lock_status[i],fill=Colors['off_color'])
 				else:
-					GUI_object.cav_lock_status_cv.itemconfig(GUI_object.cav_lock_status,fill=Colors['off_color'])
+					if refresh_gui:
+						GUI_object.cav_lock_status_cv.itemconfig(GUI_object.cav_lock_status,fill=Colors['off_color'])
 
 
 			if self.master_lock_engaged and len(self.master_signal.peaks_x)==2:
 
-				X=np.linspace(0,len(self.master_err_history)-1,len(self.master_err_history))
-				GUI_object.plot_win.mline.set_data(X,self.master_err_history)
-				GUI_object.plot_win.ax_err.set_ylim(min(self.master_err_history)-self.master_rms_crit/3, self.master_rms_crit/3+max(self.master_err_history))
-				GUI_object.plot_win.ax_err.set_xlim(min(X), max(X))
+				if refresh_plots:
+					X=np.linspace(0,len(self.master_err_history)-1,len(self.master_err_history))
+					GUI_object.plot_win.mline.set_data(X,self.master_err_history)
+					GUI_object.plot_win.ax_err.set_ylim(min(self.master_err_history)-self.master_rms_crit/3, self.master_rms_crit/3+max(self.master_err_history))
+					GUI_object.plot_win.ax_err.set_xlim(min(X), max(X))
 
 				if GUI_object.master_logging_set:
-
-					GUI_object.master_time_temp.put(time()-GUI_object.mt_start)
-					GUI_object.master_error_temp.put(GUI_object.lock.master_err)
+					if refresh_gui:
+						GUI_object.master_time_temp.put(time()-GUI_object.mt_start)
+						GUI_object.master_error_temp.put(GUI_object.lock.master_err)
 
 					self._master_counter+=1
 
 				for j in range(len(self.slave_locks_engaged)):
 					if self.slave_locks_engaged[j]:
-
-						Xs=np.linspace(0,len(self.slave_err_history[j])-1,len(self.slave_err_history[j]))
-						GUI_object.plot_win.slines[j].set_data(Xs,self.slave_err_history[j])
-						try:
-							GUI_object.plot_win.ax_err_L[j].set_ylim(min(self.slave_err_history[j])-self.slave_rms_crits[j]/3, self.slave_rms_crits[j]/3+max(self.slave_err_history[j]))
-						except:
-							pass
-						try:
-							GUI_object.plot_win.ax_err_L[j].set_xlim(min(Xs), max(Xs))
-						except:
-							pass
+						if refresh_plots:
+							Xs=np.linspace(0,len(self.slave_err_history[j])-1,len(self.slave_err_history[j]))
+							GUI_object.plot_win.slines[j].set_data(Xs,self.slave_err_history[j])
+							try:
+								GUI_object.plot_win.ax_err_L[j].set_ylim(min(self.slave_err_history[j])-self.slave_rms_crits[j]/3, self.slave_rms_crits[j]/3+max(self.slave_err_history[j]))
+							except:
+								pass
+							try:
+								GUI_object.plot_win.ax_err_L[j].set_xlim(min(Xs), max(Xs))
+							except:
+								pass
 
 
 						if GUI_object.laser_logging_set[j]:
-
-
-							GUI_object.slave_time_temp[j].put(time()-GUI_object.lt_start[j])
-							GUI_object.slave_err_temp[j].put(self.slave_err_history[j][-1])
-							GUI_object.slave_rfreq_temp[j].put(-GUI_object.lock.get_laser_abs_freq(j))
-							GUI_object.slave_lfreq_temp[j].put(-GUI_object.lock.get_laser_abs_lockpoint(j))
-							GUI_object.slave_rr_temp[j].put(GUI_object.lock.slave_Rs[j])
-							GUI_object.slave_lr_temp[j].put(GUI_object.lock.slave_lockpoints[j])
-							GUI_object.slave_pow_temp[j].put(1000*np.mean(self.daq_tasks.power_PDs.power[j]))
-							GUI_object.slave_wvmfreq_temp[j].put(GUI_object.real_frequency[j][0])
+							if refresh_gui:
+								GUI_object.slave_time_temp[j].put(time()-GUI_object.lt_start[j])
+								GUI_object.slave_err_temp[j].put(self.slave_err_history[j][-1])
+								GUI_object.slave_rfreq_temp[j].put(-GUI_object.lock.get_laser_abs_freq(j))
+								GUI_object.slave_lfreq_temp[j].put(-GUI_object.lock.get_laser_abs_lockpoint(j))
+								GUI_object.slave_rr_temp[j].put(GUI_object.lock.slave_Rs[j])
+								GUI_object.slave_lr_temp[j].put(GUI_object.lock.slave_lockpoints[j])
+								GUI_object.slave_pow_temp[j].put(1000*np.mean(self.daq_tasks.power_PDs.power[j]))
+								GUI_object.slave_wvmfreq_temp[j].put(GUI_object.real_frequency[j][0])
 
 
 							self._slave_counters[j]+=1
@@ -515,8 +536,10 @@ class TransferLock:
 			self.daq_tasks.ao_scan.perform_scan(False)
 			self._counter+=1
 
-
-			GUI_object.plot_win.fig.canvas.draw_idle()
+			if refresh_plots:
+				GUI_object.plot_win.fig.canvas.draw_idle()
+			refresh_plots = False
+			refresh_gui = False
 
 		self.daq_tasks.stop()
 		self._scan_paused.set()
