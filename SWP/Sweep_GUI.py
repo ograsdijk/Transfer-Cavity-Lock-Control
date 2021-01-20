@@ -1476,8 +1476,7 @@ class TransferCavity:
 		cav_d={"RMS":self.transfer_lock.rms_points,"LockThreshold":self.transfer_lock.master_rms_crit,"PeakCriterion":self.transfer_lock.master_peak_crit,"ScanTime":self.transfer_lock.daq_tasks.ao_scan.scan_time,"ScanSamples":self.transfer_lock.daq_tasks.ao_scan.n_samples,"ScanOffset":self.transfer_lock.daq_tasks.ao_scan.offset,"ScanAmplitude":self.transfer_lock.daq_tasks.ao_scan.amplitude,"PGain":self.lock.prop_gain[0],"IGain":self.lock.int_gain[0],"FSR":self.lock._FSR,"Wavelength":self.lock.get_master_wavelength(),"Lockpoint":self.lock.master_lockpoint,"MinVoltage":self.transfer_lock.daq_tasks.ao_scan.mn_voltage,"MaxVoltage":self.transfer_lock.daq_tasks.ao_scan.mx_voltage,"InputChannel":channel_number(self.transfer_lock.daq_tasks.get_scan_ai_channel()),"OutputChannel":channel_number(self.transfer_lock.daq_tasks.get_scan_ao_channel())}
 
 		laser1_d={"Name":self.lasers[0].get_name(),"LockpointR":self.lock.slave_lockpoints[0],"LockpointMHz":self.lock.get_laser_lockpoint(0),"Wavelength":self.lasers[0].get_set_wavelength(),"PeakCriterion":self.transfer_lock.slave_peak_crits[0],"LockThreshold":self.transfer_lock.slave_rms_crits[0],"PGain":self.lock.prop_gain[1],"IGain":self.lock.int_gain[1],"MinVoltage":self.transfer_lock.daq_tasks.ao_laser.mn_voltages[0],"MaxVoltage":self.transfer_lock.daq_tasks.ao_laser.mx_voltages[0],"SetVoltage":self.transfer_lock.daq_tasks.ao_laser.voltages[0],"InputChannel":channel_number(self.transfer_lock.daq_tasks.get_laser_ai_channel(0)),"OutputChannel":channel_number(self.transfer_lock.daq_tasks.get_laser_ao_channel(0)),"PowerChannel":channel_number(self.transfer_lock.daq_tasks.get_laser_power_channel(0))}
-		print(self.lasers[0].get_name())
-		print(laser1_d)
+
 		if len(self.lasers)>1:
 
 			laser2_d={"Name":self.lasers[1].get_name(),"LockpointR":self.lock.slave_lockpoints[1],"LockpointMHz":self.lock.get_laser_lockpoint(1),"Wavelength":self.lasers[1].get_set_wavelength(),"PeakCriterion":self.transfer_lock.slave_peak_crits[1],"LockThreshold":self.transfer_lock.slave_rms_crits[1],"PGain":self.lock.prop_gain[2],"IGain":self.lock.int_gain[2],"MinVoltage":self.transfer_lock.daq_tasks.ao_laser.mn_voltages[1],"MaxVoltage":self.transfer_lock.daq_tasks.ao_laser.mx_voltages[1],"SetVoltage":self.transfer_lock.daq_tasks.ao_laser.voltages[1],"InputChannel":channel_number(self.transfer_lock.daq_tasks.get_laser_ai_channel(1)),"OutputChannel":channel_number(self.transfer_lock.daq_tasks.get_laser_ao_channel(1)),"PowerChannel":channel_number(self.transfer_lock.daq_tasks.get_laser_power_channel(1))}
@@ -2057,7 +2056,7 @@ class TransferCavity:
 			if mwv is not None or fsr is not None:
 				self.lock.update_slave_FSRs()
 				for i in range(2):
-					self.laser_lckp[i].config(text='{:.0f}'.format(self.lock.get_laser_lockpoint(i)))
+					self.laser_lckp[i].config(text='{:.2f}'.format(self.lock.get_laser_lockpoint(i)))
 					self.adj_fsr[i].config(text='{:.1f}'.format(1000*self.lock._slave_FSR[i]))
 					self.laser_r_lckp[ind].config(text='{:.3f}'.format(self.lock.slave_lockpoints[ind]))
 
@@ -2111,7 +2110,7 @@ class TransferCavity:
 
 
 			if swv is not None:
-				self.laser_lckp[ind].config(text='{:.0f}'.format(self.lock.get_laser_lockpoint(ind)))
+				self.laser_lckp[ind].config(text='{:.2f}'.format(self.lock.get_laser_lockpoint(ind)))
 				self.adj_fsr[ind].config(text='{:.1f}'.format(1000*self.lock._slave_FSR[ind]))
 				self.laser_r_lckp[ind].config(text='{:.3f}'.format(self.lock.slave_lockpoints[ind]))
 
@@ -2265,7 +2264,7 @@ class TransferCavity:
 	def move_slave_lck(self,num,ind):
 		if self.lock is not None:
 			self.lock.move_laser_lockpoint(num,ind)
-			self.laser_lckp[ind].config(text='{:.0f}'.format(self.lock.get_laser_lockpoint(ind)))
+			self.laser_lckp[ind].config(text='{:.2f}'.format(self.lock.get_laser_lockpoint(ind)))
 			self.laser_r_lckp[ind].config(text="{:.3f}".format(self.lock.slave_lockpoints[ind]))
 
 
@@ -2677,7 +2676,7 @@ class TransferCavity:
 				self.lock.set_laser_lockpoint(fr,ind)
 				self.current_deviation[ind].config(text="{:.3f}".format(fr)+" MHz")
 				self.current_dev_process[ind].config(text="Locking...")
-				self.laser_lckp[ind].config(text='{:.0f}'.format(self.lock.get_laser_lockpoint(ind)))
+				self.laser_lckp[ind].config(text='{:.2f}'.format(self.lock.get_laser_lockpoint(ind)))
 				self.laser_r_lckp[ind].config(text='{:.3f}'.format(self.lock.slave_lockpoints[ind]))
 
 				self.transfer_lock.slave_locked_flags[ind].wait(60)
@@ -2829,7 +2828,7 @@ class TransferCavity:
 
 
 			self.lock.set_laser_lockpoint(swstart,ind)
-			self.laser_lckp[ind].config(text='{:.0f}'.format(self.lock.get_laser_lockpoint(ind)))
+			self.laser_lckp[ind].config(text='{:.2f}'.format(self.lock.get_laser_lockpoint(ind)))
 			self.laser_r_lckp[ind].config(text='{:.3f}'.format(self.lock.slave_lockpoints[ind]))
 
 			#Engaging the lock
@@ -2847,7 +2846,7 @@ class TransferCavity:
 						current=upper_bound
 						self.lock.set_laser_lockpoint(upper_bound,ind)
 						self.current_deviation[ind].config(text="{:.3f}".format(current)+" MHz")
-						self.laser_lckp[ind].config(text='{:.0f}'.format(self.lock.get_laser_lockpoint(ind)))
+						self.laser_lckp[ind].config(text='{:.2f}'.format(self.lock.get_laser_lockpoint(ind)))
 						self.laser_r_lckp[ind].config(text='{:.3f}'.format(self.lock.slave_lockpoints[ind]))
 						self.sw_pr_var[ind].set((current-lower_bound)/interval*100)
 						self.transfer_lock.slave_locked_flags[ind].clear()
@@ -2865,7 +2864,7 @@ class TransferCavity:
 						current=lower_bound
 						self.lock.set_laser_lockpoint(lower_bound,ind)
 						self.current_deviation[ind].config(text="{:.3f}".format(current)+" MHz")
-						self.laser_lckp[ind].config(text='{:.0f}'.format(self.lock.get_laser_lockpoint(ind)))
+						self.laser_lckp[ind].config(text='{:.2f}'.format(self.lock.get_laser_lockpoint(ind)))
 						self.laser_r_lckp[ind].config(text='{:.3f}'.format(self.lock.slave_lockpoints[ind]))
 						self.sw_pr_var[ind].set((current-lower_bound)/interval*100)
 						self.transfer_lock.slave_locked_flags[ind].clear()
@@ -2879,7 +2878,7 @@ class TransferCavity:
 
 
 				self.current_deviation[ind].config(text="{:.3f}".format(current)+" MHz")
-				self.laser_lckp[ind].config(text='{:.0f}'.format(self.lock.get_laser_lockpoint(ind)))
+				self.laser_lckp[ind].config(text='{:.2f}'.format(self.lock.get_laser_lockpoint(ind)))
 				self.laser_r_lckp[ind].config(text='{:.3f}'.format(self.lock.slave_lockpoints[ind]))
 				self.sw_pr_var[ind].set((current-lower_bound)/interval*100)
 
@@ -3104,14 +3103,14 @@ class TransferCavity:
 		try:
 			stp=float(self.laser_lsp[ind].get())
 			self.lock.set_laser_lockpoint(stp,ind)
-			self.laser_lckp[ind].config(text='{:.0f}'.format(self.lock.get_laser_lockpoint(ind)))
+			self.laser_lckp[ind].config(text='{:.2f}'.format(self.lock.get_laser_lockpoint(ind)))
 			self.laser_r_lckp[ind].config(text='{:.3f}'.format(self.lock.slave_lockpoints[ind]))
 		except ValueError:
 			pass
 
 	def set_laser_lockpoint(self,stp,ind):
 		self.lock.set_laser_lockpoint(stp,ind)
-		self.laser_lckp[ind].config(text='{:.0f}'.format(self.lock.get_laser_lockpoint(ind)))
+		self.laser_lckp[ind].config(text='{:.2f}'.format(self.lock.get_laser_lockpoint(ind)))
 		self.laser_r_lckp[ind].config(text='{:.3f}'.format(self.lock.slave_lockpoints[ind]))
 
 
