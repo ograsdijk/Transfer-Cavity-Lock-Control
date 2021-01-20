@@ -89,14 +89,6 @@ class DAQ_tasks:
 
 		#Timing (synchronisation) has to be set every time we recreate a task.
 		self.set_input_timing()
-<<<<<<< Updated upstream
-=======
-
-		self.trig = nidaqmx.Task("trig task")
-		self.trig_task.do_channels.add_do_chan(
-                                        self.trigger_ch
-                                        )
->>>>>>> Stashed changes
 	
 
 	#Function similar to the previous one. This one is invoked when user changes at least one channel.
@@ -118,14 +110,6 @@ class DAQ_tasks:
 		for ch in power_channels:
 			self.power_PDs.dq_task.ai_channels.add_ai_voltage_chan(ch)
 
-<<<<<<< Updated upstream
-=======
-		self.trig = nidaqmx.Task("trig task")
-		self.trig_task.do_channels.add_do_chan(
-                                        self.trigger_ch
-                                        )
-
->>>>>>> Stashed changes
 		self.set_input_timing()
 
 
