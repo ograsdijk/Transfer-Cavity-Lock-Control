@@ -257,26 +257,16 @@ class DAQ_tasks:
 		self.ai_PDs.acquire_data()
 
 		#We set options for the program to wait for scan and readout to bo completed before the task is stopped.
-<<<<<<< Updated upstream
-		self.ao_scan.dq_task.wait_until_done()
-		self.ai_PDs.dq_task.wait_until_done()
-=======
 		# self.ao_scan.dq_task.wait_until_done()
 		# self.ai_PDs.dq_task.wait_until_done()
->>>>>>> Stashed changes
 
 		
 		#We add reference to the DAQ_task object
 		self.PD_data=self.ai_PDs.acq_data
 
 		#We stop the tasks. 
-<<<<<<< Updated upstream
-		self.ao_scan.dq_task.stop()
-		self.ai_PDs.dq_task.stop()
-=======
 		# self.ao_scan.dq_task.stop()
 		# self.ai_PDs.dq_task.stop()
->>>>>>> Stashed changes
 
 		# self.get_power()
 
