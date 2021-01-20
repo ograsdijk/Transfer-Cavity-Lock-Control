@@ -11,8 +11,8 @@ import random
 This file contains classes that are responsbile for communicating with DAQ devices, writing and reading the data.
 The class DAQ_tasks is the one that is usually used by GUI classes or by the TransferLock class. It containes in
 itself references to objects of three other classes defined here: Scan class, controlling cavity scan, L_task class,
-which controls voltages applied to science lasers (so controls their frequencies), and PD_task class, which is 
-designed to read data from photodetectors for both the master and slave lasers.The whole process of scanning (so 
+which controls voltages applied to science lasers (so controls their frequencies), and PD_task class, which is
+designed to read data from photodetectors for both the master and slave lasers.The whole process of scanning (so
 writing data) and reading is managed from the level of DAQ_tasks. It also contains some more general helpful methods.
 """
 class DAQ_tasks:
@@ -23,7 +23,7 @@ class DAQ_tasks:
 	Otherwise, it chooses the first one from the list.
 	"""
 	def __init__(self,simulate,dev_name=None):
-		
+
 		syst=dq.system.System.local()
 		if dev_name is not None:
 			for dev in syst.devices:
@@ -41,7 +41,7 @@ class DAQ_tasks:
 		self.time_samples=[]
 		self.PD_data=[]
 		self.simulation=simulate
-		self.trigger_ch = self.device.name+'/PFI0'
+		self.trigger_ch = self.device.name+'/PFI12'
 
 
 	#To avoid error when the program is being closed, the tasks are closed first.
@@ -62,7 +62,7 @@ class DAQ_tasks:
 		self.trig.close()
 		self.trig=0
 
-	
+
 	"""
 	If user changes channels for a task, and then wants to go back to default configuration, this function is invoked.
 	It clears tasks and creates fresh ones using the config file.
@@ -89,7 +89,10 @@ class DAQ_tasks:
 
 		#Timing (synchronisation) has to be set every time we recreate a task.
 		self.set_input_timing()
-	
+
+		self.trig = nidaqmx.Task('trigger')
+		self.trig.do_channels.add_do_chan(self.trigger_ch)
+
 
 	#Function similar to the previous one. This one is invoked when user changes at least one channel.
 	def update_tasks(self,ao_channels,ai_channels,power_channels):
@@ -111,6 +114,9 @@ class DAQ_tasks:
 			self.power_PDs.dq_task.ai_channels.add_ai_voltage_chan(ch)
 
 		self.set_input_timing()
+
+		self.trig = nidaqmx.Task('trigger')
+		self.trig.do_channels.add_do_chan(self.trigger_ch)
 
 
 	#A couple of self-explanatory methods.
@@ -155,7 +161,7 @@ class DAQ_tasks:
 	up just the scan task).
 	"""
 	def setup_scanning(self,mn_voltage,mx_voltage,offset,amp,n_samp,scan_t):
-		
+
 		#Maximum and minimum voltage for a scan is set
 		self.ao_scan.configure_voltage_boundaries(mn_voltage,mx_voltage)
 
@@ -205,7 +211,7 @@ class DAQ_tasks:
 		self.power_PDs=Power_PD_task(self.device,name)
 
 
-	#Method adding a laser. It adds channels to L_task tasks and to PD_task tasks. 
+	#Method adding a laser. It adds channels to L_task tasks and to PD_task tasks.
 	def add_laser(self,in_channel,out_channel,power_channel):
 		self.ao_laser.add_laser(out_channel)
 		self.ai_PDs.add_laser(in_channel)
@@ -213,23 +219,22 @@ class DAQ_tasks:
 
 
 	"""
-	Method synchronising readout clock with writing clock - samples have to be read from photodetectors at the 
+	Method synchronising readout clock with writing clock - samples have to be read from photodetectors at the
 	same points when scan is performed.
 	"""
 	def set_input_timing(self):
 		self.ai_PDs.configure_clock(self.ao_scan.sample_rate,self.ao_scan.n_samples, self.trigger_ch)
 
 	def start(self):
-		self.ao_laser.start()
-		self.ao_scan.start()
+		self.ao_laser.dq_task.start()
 		self.trig.start()
-		self.ai_PDs.start()
+		self.ai_PDs.dq_task.start()
 
 	def stop(self):
-		self.ao_laser.stop()
-		self.ao_scan.stop()
+		self.ao_laser.dq_task.stop()
+		self.ao_scan.dq_task.stop()
 		self.trig.stop()
-		self.ai_PDs.stop()
+		self.ai_PDs.dq_task.stop()
 
 
 	#Method that manages scanning and acquiring data from the DAQ.
@@ -239,9 +244,9 @@ class DAQ_tasks:
 		# self.ai_PDs.start()
 
 		#Voltages for the lasers are set and the scan is performed. Both tasks start and are performed automatically.
-		self.ao_laser.set_voltages(False)
-		self.ao_scan.perform_scan(False)
-		self.trig.write([False,True])
+		self.ao_laser.set_voltages(True)
+		# self.ao_scan.perform_scan(False)
+		self.trig.write([True,False])
 
 		#Data from photodetectros is acquired (it was stored in buffers when scan was being performed, now it's fetched)
 		self.ai_PDs.acquire_data()
@@ -250,11 +255,11 @@ class DAQ_tasks:
 		# self.ao_scan.dq_task.wait_until_done()
 		# self.ai_PDs.dq_task.wait_until_done()
 
-		
+
 		#We add reference to the DAQ_task object
 		self.PD_data=self.ai_PDs.acq_data
 
-		#We stop the tasks. 
+		#We stop the tasks.
 		# self.ao_scan.dq_task.stop()
 		# self.ai_PDs.dq_task.stop()
 
@@ -281,10 +286,10 @@ class DAQ_tasks:
 		peak_s1=self.ao_laser.voltages[0]/5*self.ao_scan.scan_time
 		peak_s12p=peak_s1+(peak_m2-peak_m1)*1000/784.5
 		peak_s12m=peak_s1-(peak_m2-peak_m1)*1000/784.5
-		
+
 		M=generate_data([0.01,0.01],[peak_m1,peak_m2],[2/self.ao_scan.n_samples*self.ao_scan.scan_time,2/self.ao_scan.n_samples*self.ao_scan.scan_time],self.ao_scan.n_samples,0,self.ao_scan.scan_time)
 		M=add_noise(M,0.002)
-		
+
 		S1=generate_data([0.002,0.002,0.002],[peak_s1,peak_s12p,peak_s12m],[1/self.ao_scan.n_samples*self.ao_scan.scan_time,1/self.ao_scan.n_samples*self.ao_scan.scan_time,1/self.ao_scan.n_samples*self.ao_scan.scan_time],self.ao_scan.n_samples,0,self.ao_scan.scan_time)
 		S1=add_noise(S1,0.001)
 
@@ -294,18 +299,18 @@ class DAQ_tasks:
 			peak_s22m=peak_s2-(peak_m2-peak_m1)*1000/784.5
 			S2=generate_data([0.002,0.002,0.002],[peak_s2,peak_s22p,peak_s22m],[1/self.ao_scan.n_samples*self.ao_scan.scan_time,1/self.ao_scan.n_samples*self.ao_scan.scan_time,1/self.ao_scan.n_samples*self.ao_scan.scan_time],self.ao_scan.n_samples,0,self.ao_scan.scan_time)
 			S2=add_noise(S2,0.0015)
-		
+
 			return [M,S1,S2]
 		else:
 			return [M,S1]
 
-	
+
 
 #################################################################################################################
 
 
 """
-The class below handles the scanning procedure. It writes data to the DAQ with sampling rate defined by user (Through 
+The class below handles the scanning procedure. It writes data to the DAQ with sampling rate defined by user (Through
 number of samples per scan and scanning time).
 
 """
@@ -325,13 +330,13 @@ class Scan:
 		self.mx_voltage=0
 		self.scan_end=0
 		self.amplitude=0
-		self.trigger_ch = dev.name + "/PFI0"
+		self.trigger_ch = dev.name + "/PFI12"
 
 
 	#Starting the task. Used if autostart is not used.
 	def start(self):
 		self.dq_task.start()
-	
+
 
 	#Setting maximum and minimum voltage for cavity.
 	def configure_voltage_boundaries(self,mn_voltage,mx_voltage):
@@ -355,7 +360,7 @@ class Scan:
 			self.amplitude=self.mx_voltage-offset
 		else:
 			self.amplitude=amplitude
-		
+
 		self.offset=offset
 
 		self.scan_end=offset+self.amplitude
@@ -367,7 +372,7 @@ class Scan:
 
 
 	#Method configuring scan sampling rate using number of samples per scan and the scan time.
-	def configure_scan_sampling(self,scan_time, trigger):
+	def configure_scan_sampling(self,scan_time):
 
 		self.scan_time=scan_time #ms
 		self.sample_rate=1000*self.n_samples/scan_time #S/s
@@ -379,15 +384,15 @@ class Scan:
                         sample_mode = nidaqmx.constants.AcquisitionType.FINITE
 						)
 
-		#We also need to adjust size of the buffer and set it to the number of samples that are supposed to be written. 
+		#We also need to adjust size of the buffer and set it to the number of samples that are supposed to be written.
 		self.dq_task.out_stream.output_buf_size=self.n_samples
-        self.dq_task.out_stream.regen_mode = \
-                    nidaqmx.constants.RegenerationMode.DONT_ALLOW_REGENERATION
+		self.dq_task.out_stream.regen_mode = \
+					nidaqmx.constants.RegenerationMode.DONT_ALLOW_REGENERATION
 
-        self.dq_task.triggers.start_trigger.cfg_dig_edge_start_trig(
-                                    self.trigger_ch, 
-                                    trigger_edge=nidaqmx.constants.Edge.RISING
-                                    )
+		self.dq_task.triggers.start_trigger.cfg_dig_edge_start_trig(
+									self.trigger_ch.split('/')[-1],
+									trigger_edge=nidaqmx.constants.Edge.RISING
+									)
 		self.dq_task.triggers.start_trigger.retriggerable = True
 
 	#Method performing writing data to DAQ.
@@ -396,7 +401,7 @@ class Scan:
 		self.dq_task.write(self.scan_points,auto_start=autostart_flag)
 
 
-	#Setting scanning offset. It has to modify all the scanning points. 
+	#Setting scanning offset. It has to modify all the scanning points.
 	def set_offset(self,offset):
 
 		if offset<self.mn_voltage:
@@ -411,7 +416,7 @@ class Scan:
 		self.scan_points=np.linspace(self.offset,self.scan_end,num=self.n_samples)
 
 
-	#Moving scanning offset. It has to move all the scanning points. 
+	#Moving scanning offset. It has to move all the scanning points.
 	def move_offset(self,change):
 		self.offset+=change
 
@@ -443,7 +448,7 @@ class L_task:
 
 		#Number of slave lasers/channels used
 		self._channel_no=0
-	
+
 
 	#Configuration of maximum and minimum voltages for all lasers.
 	def configure_voltage_boundaries(self,mn_voltages,mx_voltages):
@@ -461,7 +466,7 @@ class L_task:
 		self.mn_voltages[ind]=mn_voltage
 		self.mx_voltages[ind]=mx_voltage
 
-	
+
 	#Adding a laser. Method just adds analog output channel associated with a slave laser.
 	def add_laser(self,channel):
 
@@ -479,7 +484,7 @@ class L_task:
 			if voltages[i]>self.mx_voltages[i]:
 				voltages[i]=self.mx_voltages[i]
 		self.voltages=voltages
-		
+
 
 	#Method actually setting those voltages through the DAQ.
 	def set_voltages(self,as_flag):
@@ -526,8 +531,8 @@ class PD_task:
 			self.dq_task.timing.cfg_samp_clk_timing(sample_rate,source='/'+self.device.name+'/ao/SampleClock',samps_per_chan=n_samples)
 			self.n_samples=n_samples
 
-			self.triggers.start_trigger.cfg_dig_edge_start_trig(
-                                    trigger_ch, 
+			self.dq_task.triggers.start_trigger.cfg_dig_edge_start_trig(
+                                    trigger_ch.split('/')[-1],
                                     trigger_edge=nidaqmx.constants.Edge.RISING
                                     )
 			self.dq_task.triggers.start_trigger.retriggerable = True
@@ -547,7 +552,7 @@ class PD_task:
 
 
 """
-Class that takes care of reading data from photodetectors through the DAQ to measure power of the doubled laser. 
+Class that takes care of reading data from photodetectors through the DAQ to measure power of the doubled laser.
 It initializes by creating a DAQ Task and by adding channel for the first science laser.
 """
 class Power_PD_task:
@@ -583,7 +588,7 @@ class Power_PD_task:
 	#Method that actually acquires the data. The resulting array is (_channel_no x n_samples) (so n_samples per photodetctor).
 	def acquire_data(self,sim):
 		if self._channel_no>1:
-			self.acq_data=self.dq_task.read(number_of_samples_per_channel=self.n_samples)	
+			self.acq_data=self.dq_task.read(number_of_samples_per_channel=self.n_samples)
 		else:
 			self.acq_data=[self.dq_task.read(number_of_samples_per_channel=self.n_samples)]
 
@@ -593,7 +598,7 @@ class Power_PD_task:
 		for i in range(self._channel_no):
 			self.power[i].append(math.sqrt(sum([x**2 for x in self.acq_data[i]])/self.n_samples))
 
-		
+
 
 
 
@@ -616,7 +621,7 @@ def setup_tasks(cfg,n,simulate):
 	tq.set_laser_task("Lasers")
 	tq.set_PD_task("PDs",scan_channel=int(cfg['CAVITY']['InputChannel']))
 	tq.set_power_task("Power")
-	tq.setup_scanning(float(cfg['CAVITY']['MinVoltage']),float(cfg['CAVITY']['MaxVoltage']),float(cfg['CAVITY']['ScanOffset']),float(cfg['CAVITY']['ScanAmplitude']),int(cfg['CAVITY']['ScanSamples']),int(cfg['CAVITY']['ScanTime'])) 
+	tq.setup_scanning(float(cfg['CAVITY']['MinVoltage']),float(cfg['CAVITY']['MaxVoltage']),float(cfg['CAVITY']['ScanOffset']),float(cfg['CAVITY']['ScanAmplitude']),int(cfg['CAVITY']['ScanSamples']),int(cfg['CAVITY']['ScanTime']))
 	tq.add_laser(int(cfg['LASER1']['InputChannel']),int(cfg['LASER1']['OutputChannel']),int(cfg['LASER1']['PowerChannel']))
 	if n>1:
 		tq.add_laser(int(cfg['LASER2']['InputChannel']),int(cfg['LASER2']['OutputChannel']),int(cfg['LASER2']['PowerChannel']))
@@ -625,8 +630,11 @@ def setup_tasks(cfg,n,simulate):
 	else:
 		tq.set_laser_voltage_boundaries([float(cfg['LASER1']['MinVoltage'])],[float(cfg['LASER1']['MaxVoltage'])])
 		tq.set_laser_volts([float(cfg['LASER1']['SetVoltage'])])
-	
+
 	tq.set_input_timing()
+
+	tq.trig = nidaqmx.Task('trigger')
+	tq.trig.do_channels.add_do_chan(tq.trigger_ch)
 
 
 
