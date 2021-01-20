@@ -3424,6 +3424,8 @@ class LaserConnect:
 				if l.get_name()==self.config['LASER2']['Name'] or l.get_name()==self.config['LASER1']['Name']:
 					self.L_to_connect.append(l)
 			if len(self.L_to_connect)>0:
+				if len(self.L_to_connect) >= 3:
+					print('Error: some lasers have same name')
 				self.initialize(L=self.L_to_connect)
 			else:
 				self.caught_err.configure(text="More than two devices \n have been detected. \n Please choose up to 2 \n to connect.")
@@ -3455,6 +3457,7 @@ class LaserConnect:
 				self.las2.trace("w",self.laser_choice_update)
 
 				self.L=L
+				print(3)
 
 
 	#Helper function updating choice lists.
