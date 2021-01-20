@@ -517,7 +517,6 @@ class TransferLock:
 
 
 			GUI_object.plot_win.fig.canvas.draw_idle()
-			sleep(1e-6)
 
 		self.daq_tasks.stop()
 		self._scan_paused.set()

@@ -63,6 +63,7 @@ class DAQ_tasks:
 		self.trig=0
 
 
+
 	"""
 	If user changes channels for a task, and then wants to go back to default configuration, this function is invoked.
 	It clears tasks and creates fresh ones using the config file.
@@ -113,7 +114,10 @@ class DAQ_tasks:
 		for ch in power_channels:
 			self.power_PDs.dq_task.ai_channels.add_ai_voltage_chan(ch)
 
-		self.set_input_timing()
+		try:
+			self.set_input_timing()
+		except:
+			raise Exception('Input timing was not set.')
 
 		self.trig = nidaqmx.Task('trigger')
 		self.trig.do_channels.add_do_chan(self.trigger_ch)
@@ -248,12 +252,13 @@ class DAQ_tasks:
 		# self.ao_scan.perform_scan(False)
 		self.trig.write([True,False])
 
-		#Data from photodetectros is acquired (it was stored in buffers when scan was being performed, now it's fetched)
+		#Data from photodetectors is acquired (it was stored in buffers when scan was being performed, now it's fetched)
 		self.ai_PDs.acquire_data()
 
 		#We set options for the program to wait for scan and readout to bo completed before the task is stopped.
 		# self.ao_scan.dq_task.wait_until_done()
 		# self.ai_PDs.dq_task.wait_until_done()
+
 
 
 		#We add reference to the DAQ_task object

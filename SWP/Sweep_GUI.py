@@ -15,8 +15,9 @@ import os
 from .Config import *
 from .Devices import *
 from .Data_acq import *
-from .Bristol import SocketClientBristol671A
+from .WavemeterFiberSwitch.WavemeterFiberswitchSocketClient import WavemeterFiberswitchSocketClient
 
+from .NetworkIOLocking import *
 
 
 """
@@ -59,7 +60,6 @@ class GUI:
 
 
 	def run(self,debug=False,simulate=False):
-
 
 		pane=PanedWindow(self.root,sashwidth=5,sashpad=2,sashrelief=GROOVE,bg=bg_color)
 		pane.pack(fill=BOTH, expand=1)
@@ -443,7 +443,7 @@ class LaserControl:
 
 
 	"""
-	That's the function that's run in the update thread. It collcets data directly from the laser (every 300ms)
+	That's the function that's run in the update thread. It collects data directly from the laser (every 300ms)
 	and puts those obtained parameters into a queue.
 
 	"""
@@ -640,7 +640,7 @@ class LaserControl:
 """
 The following class describes the pane that is used to control the transfer cavity. It controls scan parameters,
 locking parameters, lockpoints of the master and slave lasers; allows sweeping the frequency within the ~GHz
-range; controlls the lasers and cavity through NI DAQs, and also controlls options associated with the DAQ.
+range; controls the lasers and cavity through NI DAQs, and also controls options associated with the DAQ.
 """
 
 class TransferCavity:
@@ -651,6 +651,8 @@ class TransferCavity:
 	"""
 
 	def __init__(self,parent,plt_frame,lasers,config,simulate):
+		# starting socket server for loggin data from external computers
+		self.networkio = NetworkIOLocking(self, '', 65430)
 
 		#Neighbouring plot frame
 		self.plot_win=plt_frame
@@ -682,6 +684,7 @@ class TransferCavity:
 
 
 		self.lasers=lasers
+
 		if simulate:
 			self.lasers=[2,2]
 
@@ -951,7 +954,20 @@ class TransferCavity:
 		Lasers' frame. This one is also divided into subframes. Two of those frames are initialized and created,
 		although if there's only one laser connected, the bottom laser frame will be greyed out.
 		"""
-		self.laser_window=[LabelFrame(parent,text="Laser 1",fg=label_fg_color,bg=bg_color),LabelFrame(parent,text="Laser 2",fg=label_fg_color,bg=bg_color)]
+		if self.lasers[0].get_name()=="" or self.lasers[0].get_name()=="BASIK":
+			l1_name="Laser 1"
+		else:
+			l1_name=self.lasers[0].get_name()
+
+		if len(self.lasers)>1:
+			if self.lasers[1].get_name()=="" or self.lasers[1].get_name()=="BASIK":
+				l2_name="Laser 2"
+			else:
+				l2_name=self.lasers[1].get_name()
+		else:
+			l2_name="Laser 2"
+
+		self.laser_window=[LabelFrame(parent,text=l1_name,fg=label_fg_color,bg=bg_color),LabelFrame(parent,text=l2_name,fg=label_fg_color,bg=bg_color)]
 		self.laser_window[0].grid(row=3,column=1,sticky=W)
 		self.laser_window[1].grid(row=5,column=1,sticky=W)
 
@@ -1362,8 +1378,8 @@ class TransferCavity:
 		self.indicator_frame.grid_rowconfigure(2,minsize=2)
 		self.indicator_frame.grid_rowconfigure(4,minsize=2)
 
-		Label(self.indicator_frame,bg=bg_color,fg=inftext_color,text="Laser 1:",font="Arial 20 bold").grid(row=1,column=1)
-		Label(self.indicator_frame,bg=bg_color,fg=inftext_color,text="Laser 2:",font="Arial 20 bold").grid(row=3,column=1)
+		Label(self.indicator_frame,bg=bg_color,fg=inftext_color,text=l1_name+":",font="Arial 20 bold").grid(row=1,column=1)
+		Label(self.indicator_frame,bg=bg_color,fg=inftext_color,text=l2_name+":",font="Arial 20 bold").grid(row=3,column=1)
 
 
 		self.wvl_label1=Label(self.indicator_frame,bg=bg_color,fg=info_color,font="Arial 22 bold",text="")
@@ -1459,11 +1475,11 @@ class TransferCavity:
 
 		cav_d={"RMS":self.transfer_lock.rms_points,"LockThreshold":self.transfer_lock.master_rms_crit,"PeakCriterion":self.transfer_lock.master_peak_crit,"ScanTime":self.transfer_lock.daq_tasks.ao_scan.scan_time,"ScanSamples":self.transfer_lock.daq_tasks.ao_scan.n_samples,"ScanOffset":self.transfer_lock.daq_tasks.ao_scan.offset,"ScanAmplitude":self.transfer_lock.daq_tasks.ao_scan.amplitude,"PGain":self.lock.prop_gain[0],"IGain":self.lock.int_gain[0],"FSR":self.lock._FSR,"Wavelength":self.lock.get_master_wavelength(),"Lockpoint":self.lock.master_lockpoint,"MinVoltage":self.transfer_lock.daq_tasks.ao_scan.mn_voltage,"MaxVoltage":self.transfer_lock.daq_tasks.ao_scan.mx_voltage,"InputChannel":channel_number(self.transfer_lock.daq_tasks.get_scan_ai_channel()),"OutputChannel":channel_number(self.transfer_lock.daq_tasks.get_scan_ao_channel())}
 
-		laser1_d={"LockpointR":self.lock.slave_lockpoints[0],"LockpointMHz":self.lock.get_laser_lockpoint(0),"Wavelength":self.lasers[0].get_set_wavelength(),"PeakCriterion":self.transfer_lock.slave_peak_crits[0],"LockThreshold":self.transfer_lock.slave_rms_crits[0],"PGain":self.lock.prop_gain[1],"IGain":self.lock.int_gain[1],"MinVoltage":self.transfer_lock.daq_tasks.ao_laser.mn_voltages[0],"MaxVoltage":self.transfer_lock.daq_tasks.ao_laser.mx_voltages[0],"SetVoltage":self.transfer_lock.daq_tasks.ao_laser.voltages[0],"InputChannel":channel_number(self.transfer_lock.daq_tasks.get_laser_ai_channel(0)),"OutputChannel":channel_number(self.transfer_lock.daq_tasks.get_laser_ao_channel(0)),"PowerChannel":channel_number(self.transfer_lock.daq_tasks.get_laser_power_channel(0))}
+		laser1_d={"Name":self.lasers[0].get_name(),"LockpointR":self.lock.slave_lockpoints[0],"LockpointMHz":self.lock.get_laser_lockpoint(0),"Wavelength":self.lasers[0].get_set_wavelength(),"PeakCriterion":self.transfer_lock.slave_peak_crits[0],"LockThreshold":self.transfer_lock.slave_rms_crits[0],"PGain":self.lock.prop_gain[1],"IGain":self.lock.int_gain[1],"MinVoltage":self.transfer_lock.daq_tasks.ao_laser.mn_voltages[0],"MaxVoltage":self.transfer_lock.daq_tasks.ao_laser.mx_voltages[0],"SetVoltage":self.transfer_lock.daq_tasks.ao_laser.voltages[0],"InputChannel":channel_number(self.transfer_lock.daq_tasks.get_laser_ai_channel(0)),"OutputChannel":channel_number(self.transfer_lock.daq_tasks.get_laser_ao_channel(0)),"PowerChannel":channel_number(self.transfer_lock.daq_tasks.get_laser_power_channel(0))}
 
 		if len(self.lasers)>1:
 
-			laser2_d={"LockpointR":self.lock.slave_lockpoints[1],"LockpointMHz":self.lock.get_laser_lockpoint(1),"Wavelength":self.lasers[1].get_set_wavelength(),"PeakCriterion":self.transfer_lock.slave_peak_crits[1],"LockThreshold":self.transfer_lock.slave_rms_crits[1],"PGain":self.lock.prop_gain[2],"IGain":self.lock.int_gain[2],"MinVoltage":self.transfer_lock.daq_tasks.ao_laser.mn_voltages[1],"MaxVoltage":self.transfer_lock.daq_tasks.ao_laser.mx_voltages[1],"SetVoltage":self.transfer_lock.daq_tasks.ao_laser.voltages[1],"InputChannel":channel_number(self.transfer_lock.daq_tasks.get_laser_ai_channel(1)),"OutputChannel":channel_number(self.transfer_lock.daq_tasks.get_laser_ao_channel(1)),"PowerChannel":channel_number(self.transfer_lock.daq_tasks.get_laser_power_channel(1))}
+			laser2_d={"Name":self.lasers[1].get_name(),"LockpointR":self.lock.slave_lockpoints[1],"LockpointMHz":self.lock.get_laser_lockpoint(1),"Wavelength":self.lasers[1].get_set_wavelength(),"PeakCriterion":self.transfer_lock.slave_peak_crits[1],"LockThreshold":self.transfer_lock.slave_rms_crits[1],"PGain":self.lock.prop_gain[2],"IGain":self.lock.int_gain[2],"MinVoltage":self.transfer_lock.daq_tasks.ao_laser.mn_voltages[1],"MaxVoltage":self.transfer_lock.daq_tasks.ao_laser.mx_voltages[1],"SetVoltage":self.transfer_lock.daq_tasks.ao_laser.voltages[1],"InputChannel":channel_number(self.transfer_lock.daq_tasks.get_laser_ai_channel(1)),"OutputChannel":channel_number(self.transfer_lock.daq_tasks.get_laser_ao_channel(1)),"PowerChannel":channel_number(self.transfer_lock.daq_tasks.get_laser_power_channel(1))}
 
 			save_conf(flname,daq_d,wvm_d,cav_d,laser1_d,laser2_d)
 
@@ -1963,17 +1979,14 @@ class TransferCavity:
 			self.adset_window=None
 
 			try:
-				sdc=SocketClientBristol671A.SocketClientBristol671A(self.host_ip,self.wvm_port)
+				sdc= WavemeterFiberswitchSocketClient(self.host_ip,self.wvm_port)
 				f=sdc.ReadValue()
 				if not isinstance(f, list):
 					raise Exception('Server at provided IP did not return a list.')
-				else:
-					if not isinstance(f[1],dict):
-						raise Exception('Server at provided IP did not return a dictionary inside the list.')
 			except Exception as e:
 				self.IP_label.config(text=self.host_ip,fg=off_color)
 				self.port_label.config(text=self.wvm_port,fg=off_color)
-				raise e
+				# raise e
 			else:
 				self.update_wavemeter_data_thread=threading.Thread(target=self.update_wvm_data)
 				self.IP_label.config(text=self.host_ip,fg=on_color)
@@ -2043,7 +2056,7 @@ class TransferCavity:
 			if mwv is not None or fsr is not None:
 				self.lock.update_slave_FSRs()
 				for i in range(2):
-					self.laser_lckp[i].config(text='{:.0f}'.format(self.lock.get_laser_lockpoint(i)))
+					self.laser_lckp[i].config(text='{:.2f}'.format(self.lock.get_laser_lockpoint(i)))
 					self.adj_fsr[i].config(text='{:.1f}'.format(1000*self.lock._slave_FSR[i]))
 					self.laser_r_lckp[ind].config(text='{:.3f}'.format(self.lock.slave_lockpoints[ind]))
 
@@ -2097,7 +2110,7 @@ class TransferCavity:
 
 
 			if swv is not None:
-				self.laser_lckp[ind].config(text='{:.0f}'.format(self.lock.get_laser_lockpoint(ind)))
+				self.laser_lckp[ind].config(text='{:.2f}'.format(self.lock.get_laser_lockpoint(ind)))
 				self.adj_fsr[ind].config(text='{:.1f}'.format(1000*self.lock._slave_FSR[ind]))
 				self.laser_r_lckp[ind].config(text='{:.3f}'.format(self.lock.slave_lockpoints[ind]))
 
@@ -2130,13 +2143,19 @@ class TransferCavity:
 			if len(Chs)!=len(set(Chs)):
 				raise Exception("Cannot use same channel for two devices.") #This will be caught by GUI logger.
 			else:
-				self.transfer_lock.daq_tasks.update_tasks([sc_ao,l1_ao,l2_ao],[m_ai,l1_ai,l2_ai],[l1_p,l2_p])
+				try:
+					self.transfer_lock.daq_tasks.update_tasks([sc_ao,l1_ao,l2_ao],[m_ai,l1_ai,l2_ai],[l1_p,l2_p])
+				except:
+					pass
 
 		else:
 			if len(Chs)!=len(set(Chs)):
 				raise Exception("Cannot use same channel for two devices.")
 			else:
-				self.transfer_lock.daq_tasks.update_tasks([sc_ao,l1_ao],[m_ai,l1_ai],[l1_p])
+				try:
+					self.transfer_lock.daq_tasks.update_tasks([sc_ao,l1_ao],[m_ai,l1_ai],[l1_p])
+				except:
+					pass
 
 		#The window is destroyed at the end.
 		self.cancel_daqtop()
@@ -2245,7 +2264,7 @@ class TransferCavity:
 	def move_slave_lck(self,num,ind):
 		if self.lock is not None:
 			self.lock.move_laser_lockpoint(num,ind)
-			self.laser_lckp[ind].config(text='{:.0f}'.format(-self.lock.get_laser_lockpoint(ind)))
+			self.laser_lckp[ind].config(text='{:.2f}'.format(self.lock.get_laser_lockpoint(ind)))
 			self.laser_r_lckp[ind].config(text="{:.3f}".format(self.lock.slave_lockpoints[ind]))
 
 
@@ -2321,7 +2340,7 @@ class TransferCavity:
 			if self.las_err_log[ind].get():
 
 				if self.laslog_filenames[ind] is None:
-					self.laslog_filenames[ind]=self.laslog_default_directories[ind]+"logS"+datetime.datetime.fromtimestamp(time()).strftime('-%Y-%m-%d-%H.%M.%S')+".hdf5"
+					self.laslog_filenames[ind]=self.laslog_default_directories[ind]+"logS"+str(ind)+"_"+datetime.datetime.fromtimestamp(time()).strftime('-%Y-%m-%d-%H.%M.%S')+".hdf5"
 
 				with h5py.File(self.laslog_filenames[ind],'a') as f:
 					if not self.simulate:
@@ -2524,6 +2543,8 @@ class TransferCavity:
 				except:
 					pass
 
+		self.laslog_filenames[ind] = None
+
 
 
 	"""
@@ -2655,7 +2676,7 @@ class TransferCavity:
 				self.lock.set_laser_lockpoint(fr,ind)
 				self.current_deviation[ind].config(text="{:.3f}".format(fr)+" MHz")
 				self.current_dev_process[ind].config(text="Locking...")
-				self.laser_lckp[ind].config(text='{:.0f}'.format(-self.lock.get_laser_lockpoint(ind)))
+				self.laser_lckp[ind].config(text='{:.2f}'.format(self.lock.get_laser_lockpoint(ind)))
 				self.laser_r_lckp[ind].config(text='{:.3f}'.format(self.lock.slave_lockpoints[ind]))
 
 				self.transfer_lock.slave_locked_flags[ind].wait(60)
@@ -2807,7 +2828,7 @@ class TransferCavity:
 
 
 			self.lock.set_laser_lockpoint(swstart,ind)
-			self.laser_lckp[ind].config(text='{:.0f}'.format(-self.lock.get_laser_lockpoint(ind)))
+			self.laser_lckp[ind].config(text='{:.2f}'.format(self.lock.get_laser_lockpoint(ind)))
 			self.laser_r_lckp[ind].config(text='{:.3f}'.format(self.lock.slave_lockpoints[ind]))
 
 			#Engaging the lock
@@ -2825,7 +2846,7 @@ class TransferCavity:
 						current=upper_bound
 						self.lock.set_laser_lockpoint(upper_bound,ind)
 						self.current_deviation[ind].config(text="{:.3f}".format(current)+" MHz")
-						self.laser_lckp[ind].config(text='{:.0f}'.format(-self.lock.get_laser_lockpoint(ind)))
+						self.laser_lckp[ind].config(text='{:.2f}'.format(self.lock.get_laser_lockpoint(ind)))
 						self.laser_r_lckp[ind].config(text='{:.3f}'.format(self.lock.slave_lockpoints[ind]))
 						self.sw_pr_var[ind].set((current-lower_bound)/interval*100)
 						self.transfer_lock.slave_locked_flags[ind].clear()
@@ -2843,7 +2864,7 @@ class TransferCavity:
 						current=lower_bound
 						self.lock.set_laser_lockpoint(lower_bound,ind)
 						self.current_deviation[ind].config(text="{:.3f}".format(current)+" MHz")
-						self.laser_lckp[ind].config(text='{:.0f}'.format(-self.lock.get_laser_lockpoint(ind)))
+						self.laser_lckp[ind].config(text='{:.2f}'.format(self.lock.get_laser_lockpoint(ind)))
 						self.laser_r_lckp[ind].config(text='{:.3f}'.format(self.lock.slave_lockpoints[ind]))
 						self.sw_pr_var[ind].set((current-lower_bound)/interval*100)
 						self.transfer_lock.slave_locked_flags[ind].clear()
@@ -2857,7 +2878,7 @@ class TransferCavity:
 
 
 				self.current_deviation[ind].config(text="{:.3f}".format(current)+" MHz")
-				self.laser_lckp[ind].config(text='{:.0f}'.format(-self.lock.get_laser_lockpoint(ind)))
+				self.laser_lckp[ind].config(text='{:.2f}'.format(self.lock.get_laser_lockpoint(ind)))
 				self.laser_r_lckp[ind].config(text='{:.3f}'.format(self.lock.slave_lockpoints[ind]))
 				self.sw_pr_var[ind].set((current-lower_bound)/interval*100)
 
@@ -2942,19 +2963,16 @@ class TransferCavity:
 		self.wvm_L2=self.default_cfg['WAVEMETER']['Laser2']
 
 		try:
-			sdc=SocketClientBristol671A.SocketClientBristol671A(self.host_ip,self.wvm_port)
+			sdc=WavemeterFiberswitchSocketClient(self.host_ip,self.wvm_port)
 			f=sdc.ReadValue()
 
 			if not isinstance(f, list):
 				if not isinstance(f,dict):
 					raise Exception('Server at provided IP returned wrong format.')
-			else:
-				if not isinstance(f[1],dict):
-					raise Exception('Server at provided IP did not return a dictionary inside the list.')
 		except Exception as e:
 			self.IP_label.config(text=self.host_ip,fg=off_color)
 			self.port_label.config(text=self.wvm_port,fg=off_color)
-			raise e
+			# raise e
 		else:
 			self.update_wavemeter_data_thread=threading.Thread(target=self.update_wvm_data)
 			self.IP_label.config(text=self.host_ip,fg=on_color)
@@ -2963,6 +2981,12 @@ class TransferCavity:
 			self.wavemeter_upd_finished=Event()
 			self.update_wavemeter_data_thread.start()
 
+		if self.adset_window is not None:
+			self.adset_window.destroy()
+			self.adset_window=None
+
+
+
 
 	def update_wvm_data(self):
 
@@ -2970,7 +2994,7 @@ class TransferCavity:
 
 		while self.wavemeter_updates:
 
-			sdc=SocketClientBristol671A.SocketClientBristol671A(self.host_ip,self.wvm_port)
+			sdc=WavemeterFiberswitchSocketClient(self.host_ip,self.wvm_port)
 
 			try:
 				f_dict=sdc.ReadValue()
@@ -2983,8 +3007,7 @@ class TransferCavity:
 				raise e
 				break
 			else:
-				self.real_frequency[0].append(f_dict[self.wvm_L1][1])
-
+				self.real_frequency[0].append(f_dict[self.wvm_L1])
 				wvm1=c/self.real_frequency[0][0]
 				if wvm1<1 or wvm1>100000:
 					wvm1=0
@@ -2996,7 +3019,7 @@ class TransferCavity:
 					p1=0
 
 				if len(self.lasers)>1 and len(list(f_dict.keys()))>1:
-					self.real_frequency[1].append(f_dict[self.wvm_L2][1])
+					self.real_frequency[1].append(f_dict[self.wvm_L2])
 					wvm2=c/self.real_frequency[1][0]
 					if wvm2<1 or wvm2>100000:
 						wvm2=0
@@ -3080,10 +3103,15 @@ class TransferCavity:
 		try:
 			stp=float(self.laser_lsp[ind].get())
 			self.lock.set_laser_lockpoint(stp,ind)
-			self.laser_lckp[ind].config(text='{:.0f}'.format(-self.lock.get_laser_lockpoint(ind)))
+			self.laser_lckp[ind].config(text='{:.2f}'.format(self.lock.get_laser_lockpoint(ind)))
 			self.laser_r_lckp[ind].config(text='{:.3f}'.format(self.lock.slave_lockpoints[ind]))
 		except ValueError:
 			pass
+
+	def set_laser_lockpoint(self,stp,ind):
+		self.lock.set_laser_lockpoint(stp,ind)
+		self.laser_lckp[ind].config(text='{:.2f}'.format(self.lock.get_laser_lockpoint(ind)))
+		self.laser_r_lckp[ind].config(text='{:.3f}'.format(self.lock.slave_lockpoints[ind]))
 
 
 	#Method that begins the scan. The scan happenes in a separate thread and this function creates it and starts it.
@@ -3318,11 +3346,14 @@ class LaserConnect:
 
 
 		else:
-			self.lab0.destroy()
-			self.lab1.destroy()
-			self.lab2.destroy()
-			self.las1_opt.destroy()
-			self.las2_opt.destroy()
+			try:
+				self.lab0.destroy()
+				self.lab1.destroy()
+				self.lab2.destroy()
+				self.las1_opt.destroy()
+				self.las2_opt.destroy()
+			except:
+				pass
 
 
 		if len(L)==0:
@@ -3333,6 +3364,7 @@ class LaserConnect:
 
 
 		elif len(L)<3:
+
 			self.caught_err.configure(text="")
 			s=ttk.Style()
 			s.element_create('Plain.Notebook.tab', "from", 'default')
@@ -3345,11 +3377,28 @@ class LaserConnect:
 
 			tabs=[]
 			las=[]
+
+
+			if len(L)>1 and self.config['LASER2']['Name']!='0':
+				if L[0].get_name()==self.config['LASER2']['Name'] or L[1].get_name()==self.config['LASER1']['Name']:
+					L[0],L[1]=L[1],L[0]
+
+
+
+			# for i in range(len(L)):
+			# 	tabs.append(ttk.Frame(tab_ctrl,style='TFrame'))
+			# 	self.add_status(2*i+4,i+1)
 			for i in range(len(L)):
+
 				tabs.append(ttk.Frame(tab_ctrl,style='TFrame'))
-				self.add_status(2*i+4,i+1)
-			for i in range(len(L)):
-				tab_ctrl.add(tabs[i], text="Laser "+str(i+1))
+
+				if self.config['LASER'+str(i+1)]['Name']=='0':
+					tab_ctrl.add(tabs[i], text="Laser "+str(i+1))
+					self.add_status(2*i+4,i+1,"Laser "+str(i+1))
+				else:
+					tab_ctrl.add(tabs[i], text=L[i].get_name())
+					self.add_status(2*i+4,i+1,L[i].get_name())
+
 				try:
 					cfg_wvl=float(self.config['LASER'+str(i+1)]['Wavelength'])
 					las.append(LaserControl(tabs[i],self.status[i],L[i],cfg_wvl))
@@ -3364,56 +3413,67 @@ class LaserConnect:
 			self.con_button.configure(state="disabled")
 
 			pw=PlotWindow(self.plot_frame)
+
 			self.TC=TransferCavity(self.trans_frame,pw,L,self.config,self.sim)
 
 		else:
 			#If there are more than 2 lasers connected to the computer, user has to choose 2 from the list.
 
-			self.caught_err.configure(text="More than two devices \n have been detected. \n Please choose up to 2 \n to connect.")
-			self.con_button.configure(state="disabled")
-
-			self.lab0=Label(self.parent,text="Choose lasers:",font="Arial 10 bold")
-			self.lab0.grid(row=5,column=1)
-			self.lab1=Label(self.parent,text="Laser 1:",font="Arial 10")
-			self.lab1.grid(row=6,column=1,sticky=N)
-			self.lab2=Label(self.parent,text="Laser 2:",font="Arial 10")
-			self.lab2.grid(row=8,column=1,sticky=N)
-
-			self.Llist=[str(l) for l in L]
-			self.Lrem=self.Llist+["None"]
-
-			self.las1=StringVar()
-			self.las1_opt=OptionMenu(self.parent,self.las1,*self.Llist)
-			self.las1_opt.grid(row=6,column=1,sticky=S)
-			self.las1_opt.config(bg=button_bg_color,fg=label_fg_color,font="Arial 10 bold",highlightbackground=bg_color)
-			self.las1.set("None")
-			self.las1.trace("w",self.laser_choice_update)
-
-			self.las2=StringVar()
-			self.las2_opt=OptionMenu(self.parent,self.las2,*self.Lrem)
-			self.las2_opt.grid(row=8,column=1,sticky=S)
-			self.las2.set("None")
-			self.las2_opt.config(state="disabled")
-			self.las2_opt.config(bg=button_bg_color,fg=label_fg_color,font="Arial 10 bold",highlightbackground=bg_color)
-			self.las2.trace("w",self.laser_choice_update)
-
 			self.L_to_connect=[]
-			self.L=L
+			for l in L:
+				if l.get_name()==self.config['LASER2']['Name'] or l.get_name()==self.config['LASER1']['Name']:
+					self.L_to_connect.append(l)
+			if len(self.L_to_connect)>0:
+				self.initialize(L=self.L_to_connect)
+			else:
+				self.caught_err.configure(text="More than two devices \n have been detected. \n Please choose up to 2 \n to connect.")
+				self.con_button.configure(state="disabled")
+
+				self.lab0=Label(self.parent,text="Choose lasers:",font="Arial 10 bold",bg=bg_color)
+				self.lab0.grid(row=5,column=1)
+				self.lab1=Label(self.parent,text="Laser 1:",font="Arial 10",bg=bg_color)
+				self.lab1.grid(row=6,column=1,sticky=N)
+				self.lab2=Label(self.parent,text="Laser 2:",font="Arial 10",bg=bg_color)
+				self.lab2.grid(row=8,column=1,sticky=N)
+
+				self.Llist=[str(l) for l in L]
+				self.Lrem=self.Llist+["None"]
+
+				self.las1=StringVar()
+				self.las1_opt=OptionMenu(self.parent,self.las1,*self.Llist)
+				self.las1_opt.grid(row=6,column=1,sticky=S)
+				self.las1_opt.config(bg=button_bg_color,fg=label_fg_color,font="Arial 10 bold",highlightbackground=bg_color)
+				self.las1.set("None")
+				self.las1.trace("w",self.laser_choice_update)
+
+				self.las2=StringVar()
+				self.las2_opt=OptionMenu(self.parent,self.las2,*self.Lrem)
+				self.las2_opt.grid(row=8,column=1,sticky=S)
+				self.las2.set("None")
+				self.las2_opt.config(state="disabled")
+				self.las2_opt.config(bg=button_bg_color,fg=label_fg_color,font="Arial 10 bold",highlightbackground=bg_color)
+				self.las2.trace("w",self.laser_choice_update)
+
+				self.L=L
 
 
 	#Helper function updating choice lists.
 	def laser_choice_update(self,*args):
 		if self.las1.get()!="None":
+			if self.las1.get()==self.las2.get():
+				self.las2.set("None")
 			self.L_to_connect=[l for l in self.L if str(l)==self.las1.get() or str(l)==self.las2.get()]
 			self.con_button.config(state="normal",command=lambda:self.initialize(L=self.L_to_connect))
 			self.las2_opt.config(state="normal")
-			self.las2.set("None")
+			self.Lrem=[str(l) for l in self.L if str(l)!=self.las1.get()]
+
+
 
 
 	#Helper function creating small indicators
-	def add_status(self,rw,ind):
+	def add_status(self,rw,ind,name):
 
-		cl=Label(self.parent,text="Laser "+str(ind),font="Arial 12 bold",bg=bg_color,fg=label_fg_color)
+		cl=Label(self.parent,text=name,font="Arial 12 bold",bg=bg_color,fg=label_fg_color)
 		cl.grid(row=rw,column=1,sticky=W)
 		cv=Canvas(self.parent,height=30,width=30,bg=bg_color,highlightbackground=bg_color)
 		cv.grid(row=rw,column=1,sticky=E)
