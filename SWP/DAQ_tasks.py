@@ -241,6 +241,12 @@ class DAQ_tasks:
 		self.trig.start()
 		self.ai_PDs.start()
 
+	def stop(self):
+		self.ao_laser.stop()
+		self.ao_scan.stop()
+		self.trig.stop()
+		self.ai_PDs.stop()
+
 
 	#Method that manages scanning and acquiring data from the DAQ.
 	def scan_and_acquire(self,evnt):
