@@ -400,6 +400,8 @@ class TransferLock:
 		self._scan_paused.clear()
 		self._counter=0
 
+		self.daq_tasks.start()
+
 		while self._scan_flag:
 
 			self._scan_finished.clear()

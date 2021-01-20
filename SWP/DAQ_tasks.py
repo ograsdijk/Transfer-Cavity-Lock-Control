@@ -1,4 +1,5 @@
 import nidaqmx as dq
+import nidaqmx
 import matplotlib.pyplot as plt
 import numpy as np
 import math
@@ -40,6 +41,7 @@ class DAQ_tasks:
 		self.time_samples=[]
 		self.PD_data=[]
 		self.simulation=simulate
+		self.trigger_ch = self.device.name+'/PFI0'
 
 
 	#To avoid error when the program is being closed, the tasks are closed first.
@@ -57,6 +59,8 @@ class DAQ_tasks:
 		self.ai_PDs.dq_task=0
 		self.power_PDs.dq_task.close()
 		self.power_PDs.dq_task=0
+		self.trig.close()
+		self.trig=0
 
 	
 	"""
@@ -85,6 +89,14 @@ class DAQ_tasks:
 
 		#Timing (synchronisation) has to be set every time we recreate a task.
 		self.set_input_timing()
+<<<<<<< Updated upstream
+=======
+
+		self.trig = nidaqmx.Task("trig task")
+		self.trig_task.do_channels.add_do_chan(
+                                        self.trigger_ch
+                                        )
+>>>>>>> Stashed changes
 	
 
 	#Function similar to the previous one. This one is invoked when user changes at least one channel.
@@ -106,6 +118,14 @@ class DAQ_tasks:
 		for ch in power_channels:
 			self.power_PDs.dq_task.ai_channels.add_ai_voltage_chan(ch)
 
+<<<<<<< Updated upstream
+=======
+		self.trig = nidaqmx.Task("trig task")
+		self.trig_task.do_channels.add_do_chan(
+                                        self.trigger_ch
+                                        )
+
+>>>>>>> Stashed changes
 		self.set_input_timing()
 
 
@@ -213,35 +233,52 @@ class DAQ_tasks:
 	same points when scan is performed.
 	"""
 	def set_input_timing(self):
-		self.ai_PDs.configure_clock(self.ao_scan.sample_rate,self.ao_scan.n_samples)
+		self.ai_PDs.configure_clock(self.ao_scan.sample_rate,self.ao_scan.n_samples, self.trigger_ch)
+
+	def start(self):
+		self.ao_laser.start()
+		self.ao_scan.start()
+		self.trig.start()
+		self.ai_PDs.start()
 
 
 	#Method that manages scanning and acquiring data from the DAQ.
 	def scan_and_acquire(self,evnt):
 
-		#The task for collecting data is started, but the data is not collected yet.
-		self.ai_PDs.start()
+		# #The task for collecting data is started, but the data is not collected yet.
+		# self.ai_PDs.start()
 
 		#Voltages for the lasers are set and the scan is performed. Both tasks start and are performed automatically.
-		self.ao_laser.set_voltages(True)
-		self.ao_scan.perform_scan(True)
+		self.ao_laser.set_voltages(False)
+		self.ao_scan.perform_scan(False)
+		self.trig.write([False,True])
 
 		#Data from photodetectros is acquired (it was stored in buffers when scan was being performed, now it's fetched)
 		self.ai_PDs.acquire_data()
 
 		#We set options for the program to wait for scan and readout to bo completed before the task is stopped.
+<<<<<<< Updated upstream
 		self.ao_scan.dq_task.wait_until_done()
 		self.ai_PDs.dq_task.wait_until_done()
+=======
+		# self.ao_scan.dq_task.wait_until_done()
+		# self.ai_PDs.dq_task.wait_until_done()
+>>>>>>> Stashed changes
 
 		
 		#We add reference to the DAQ_task object
 		self.PD_data=self.ai_PDs.acq_data
 
 		#We stop the tasks. 
+<<<<<<< Updated upstream
 		self.ao_scan.dq_task.stop()
 		self.ai_PDs.dq_task.stop()
+=======
+		# self.ao_scan.dq_task.stop()
+		# self.ai_PDs.dq_task.stop()
+>>>>>>> Stashed changes
 
-		self.get_power()
+		# self.get_power()
 
 		if self.simulation:
 			self.PD_data=self.simulate_scan()
@@ -308,6 +345,7 @@ class Scan:
 		self.mx_voltage=0
 		self.scan_end=0
 		self.amplitude=0
+		self.trigger_ch = dev.name + "/PFI0"
 
 
 	#Starting the task. Used if autostart is not used.
@@ -349,17 +387,28 @@ class Scan:
 
 
 	#Method configuring scan sampling rate using number of samples per scan and the scan time.
-	def configure_scan_sampling(self,scan_time):
+	def configure_scan_sampling(self,scan_time, trigger):
 
 		self.scan_time=scan_time #ms
 		self.sample_rate=1000*self.n_samples/scan_time #S/s
 
 		#The clock is configured using sample rate.
-		self.dq_task.timing.cfg_samp_clk_timing(self.sample_rate,samps_per_chan=self.n_samples)
+		self.dq_task.timing.cfg_samp_clk_timing(
+						self.sample_rate,
+						samps_per_chan=self.n_samples,
+                        sample_mode = nidaqmx.constants.AcquisitionType.FINITE
+						)
 
 		#We also need to adjust size of the buffer and set it to the number of samples that are supposed to be written. 
 		self.dq_task.out_stream.output_buf_size=self.n_samples
+        self.dq_task.out_stream.regen_mode = \
+                    nidaqmx.constants.RegenerationMode.DONT_ALLOW_REGENERATION
 
+        self.dq_task.triggers.start_trigger.cfg_dig_edge_start_trig(
+                                    self.trigger_ch, 
+                                    trigger_edge=nidaqmx.constants.Edge.RISING
+                                    )
+		self.dq_task.triggers.start_trigger.retriggerable = True
 
 	#Method performing writing data to DAQ.
 	def perform_scan(self,autostart_flag):
@@ -492,10 +541,16 @@ class PD_task:
 	For that we're basically saying that clock for this task is to be the same as for the write task. It also automatically
 	adopts the buffer size from the write task.
 	"""
-	def configure_clock(self,sample_rate,n_samples):
+	def configure_clock(self,sample_rate,n_samples,trigger_ch):
 		try:
 			self.dq_task.timing.cfg_samp_clk_timing(sample_rate,source='/'+self.device.name+'/ao/SampleClock',samps_per_chan=n_samples)
 			self.n_samples=n_samples
+
+			self.triggers.start_trigger.cfg_dig_edge_start_trig(
+                                    trigger_ch, 
+                                    trigger_edge=nidaqmx.constants.Edge.RISING
+                                    )
+			self.dq_task.triggers.start_trigger.retriggerable = True
 
 		except NameError:
 			pass
